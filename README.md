@@ -58,16 +58,13 @@ nothing found and is not empty.
 Python 3.9 or newer. The only dependency is `pypdf`.
 
 ```bash
-pip install before-you-send
-```
-
-Or from source:
-
-```bash
 git clone https://github.com/Waiga/before-you-send
 cd before-you-send
 pip install -e .
 ```
+
+Not on PyPI yet, so `pip install before-you-send` will not work. Install from
+source, as above.
 
 ## Use
 
