@@ -16,11 +16,11 @@ the tool's flagship check.
 *The text is wrong.* What comes back is not the document's text but its glyph
 numbers reinterpreted as characters, so anything printed from it is nonsense.
 
-This matters far more than it sounds. Measured across 887 real published PDFs, Type0
-was the single largest reason the tool could not measure a run: 480 font references
-against 61 for every other cause combined. Word, InDesign, Chrome's print-to-PDF,
-LibreOffice and modern TeX all emit them, which is to say most documents anybody
-would think to check before sending one.
+This matters far more than it sounds. Traced through a 60-document sample of real
+published PDFs, Type0 was the single largest reason the tool could not measure a
+run: 480 font references against 61 for every other cause combined. Word,
+InDesign, Chrome's print-to-PDF, LibreOffice and modern TeX all emit them, which is
+to say most documents anybody would think to check before sending one.
 
 Only Identity-H and Identity-V are handled. Any other encoding uses a CMap that maps
 codes to glyphs in ways this module does not read, and a width taken against the

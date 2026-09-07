@@ -162,7 +162,7 @@ def form_field_values(report, doc) -> None:
         if value is None or not str(value).strip():
             continue
         # A signature is not something somebody typed into a box. Every filled field
-        # in a 887-document sample of real published PDFs was one of these, because
+        # in a 250-document sample of real published PDFs was one of these, because
         # publishers sign what they release, and calling each of them a leaked answer
         # made this check fire on whole government archives and mean nothing.
         if kind == "/Sig":

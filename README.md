@@ -132,7 +132,7 @@ know is there.
 
 **Runs of one or two characters.** Too short to carry a name, a number of
 consequence, or a word, and on real documents almost always a plot marker, a table
-rule or a mathematical glyph. Measured across 887 published PDFs they were 57% of
+rule or a mathematical glyph. Measured over 450 published PDFs they were 57% of
 every covered-text finding and 100% of every "too small to read" one, and all of
 them were wrong. The count of runs passed over is printed in every report, because a
 threshold nobody is told about is just an undocumented bug.
@@ -202,7 +202,7 @@ scanned FOIA releases from the FBI's reading room. Six producers, which matters 
 than six sources — a Word document, a LaTeX paper and an InDesign report fail in
 different ways.
 
-It found eleven classes of defect. The first pass produced **4,280 findings across
+It found thirteen classes of defect. The first pass produced **4,280 findings across
 450 documents, 3,126 of them HIGH**, and almost none of them worth reading.
 
 | | before | after |
@@ -222,7 +222,8 @@ began by asking the parsed trailer for `/Prev`. A parser only surfaces that key 
 classic cross-reference table, and every modern PDF — Word, Acrobat, InDesign,
 Chrome, every linearized government file — uses a cross-reference stream instead, so
 the check returned on its first line and never reached the byte walk written for
-exactly this question. It was silent on **256 of the 931**. Most of those are
+exactly this question. Measured over the 887 documents collected at that point, it
+was silent on **256 of them**. Most of those are
 linearization, which it knows how to excuse; 34 are retained earlier versions with no
 benign explanation, and 5 are serious. Every fixture in the suite used a classic xref
 table, so no test could have seen it.

@@ -1,4 +1,4 @@
-"""One test per defect found by running the tool over 887 real published PDFs.
+"""One test per defect found by running the tool over 931 real published PDFs.
 
 The suite in ``test_regressions.py`` was written by attacking the tool with
 documents built to fool it. This one is different: every defect below was found by
@@ -12,7 +12,8 @@ government notice produced 64 findings for two facts. Every single filled form
 field in the corpus was a publisher's signature, reported as though somebody had
 typed a secret into a box. And the one check most likely to hide a real leak —
 retained earlier versions of the document — returned on its first line for 256 of
-the 887 files, because of a gate that could never be true for a modern PDF.
+the 887 files collected at that point, because of a gate that could never be true
+for a modern PDF.
 
 None of that was reachable from a fixture. Each test names the real document shape
 that produced the defect.
@@ -110,7 +111,7 @@ def test_two_unrelated_hidden_passages_stay_two_findings(build):
 
 # --- runs too short to mean anything ---------------------------------------
 #
-# 57% of every covered_text finding in the corpus was one or two characters long,
+# 57% of every covered_text finding over 450 documents was one or two characters long,
 # 70% of every clipped one, and 100% of every "too small to read" one. A scatter
 # plot marker painted across an axis label is not a redaction.
 
@@ -448,8 +449,8 @@ def test_a_clip_narrowed_to_nothing_does_not_become_no_clip_at_all(build):
 # --- fonts that address glyphs by number ------------------------------------
 #
 # Type0 was the single largest reason the tool could not measure a run: 480 font
-# references across a sample of 887 real documents, against 61 for every other cause
-# combined. Word, InDesign, Chrome's print-to-PDF and modern TeX all emit them.
+# references across a 60-document sample of real files, against 61 for every other
+# cause combined. Word, InDesign, Chrome's print-to-PDF and modern TeX all emit them.
 
 
 NARROW = "[1 [250 250 250 250 250 250 250 250 250 250 250 250 250 250 250 250]]"
@@ -553,7 +554,7 @@ def test_a_table_cell_border_does_not_count_as_ink_over_its_contents(build):
     """The largest single false positive in the corpus, by a wide margin.
 
     A 175-page government table produced 8,638 covered-text findings, 68% of every
-    such finding across 887 documents, and the page is an ordinary Word table with
+    such finding across 931 documents, and the page is an ordinary Word table with
     white cells and black gridlines that reads perfectly well. Every "opaque shape"
     was a cell border: an outer outline and an inner one in one path, measured as
     one rectangle and therefore as a solid block of ink over the cell.

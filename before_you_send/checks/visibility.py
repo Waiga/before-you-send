@@ -52,7 +52,7 @@ WHITE = (1.0, 1.0, 1.0)
 # a number of consequence, or a word, and nobody conceals a secret by covering a
 # single glyph. What they are, overwhelmingly, is drawing: a plot marker painted
 # across an axis label, a table rule crossing a letter, a maths glyph set in its own
-# tiny text object. Measured on 887 real published PDFs, single and double character
+# tiny text object. Measured over 450 real published PDFs, single and double character
 # runs were 57% of every covered_text finding, 70% of every clipped one, and 100% of
 # every "too small to read" one — all of them false. This is a deliberate blindness
 # and it is stated in the report, because a threshold that is not disclosed is just
