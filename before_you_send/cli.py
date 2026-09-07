@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 
+from before_you_send import __version__
 from before_you_send.document import UnreadableDocument
 from before_you_send.findings import Level, Report
 from before_you_send.report import to_json, to_text
@@ -35,6 +36,12 @@ def build_parser() -> argparse.ArgumentParser:
         epilog=EPILOGUE,
     )
     parser.add_argument("path", help="the PDF to read")
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"before-you-send {__version__}",
+        help="print the version and exit",
+    )
     parser.add_argument(
         "--show-content",
         action="store_true",
