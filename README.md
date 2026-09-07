@@ -3,25 +3,29 @@
 Reads a PDF and tells you what is still inside it that you may not mean to send.
 
 ```
-$ before-you-send settlement.pdf
+$ before-you-send letter.pdf
 
-Before You Send — settlement.pdf
+Before You Send — letter.pdf
 ========================================================================
-Read 1 page(s). 9 finding(s): 6 high, 2 medium, 1 low.
+Read 1 page(s). 10 finding(s): 5 high, 4 medium, 1 low.
 1 place(s) could not be seen into.
 
 HIGH
 ------------------------------------------------------------------------
-HIGH    page 1  (72, 657)-(258, 669)  [covered_text]
+HIGH    page 1  (72, 657)-(257, 669)  [covered_text]
         34 characters of text have an opaque shape painted over them,
-        covering about 100% of the run.
+        covering 100% of the run.
 
-HIGH    page 1  (72, 627)-(312, 639)  [invisible_text]
-        40 characters are set to render mode 3, which draws nothing on
-        the page.
+HIGH    document  file structure  [earlier_versions_retained]
+        The file contains 1 earlier version(s) of itself, kept in full
+        alongside the current one.
 
 HIGH    document  attachments  [embedded_files]
         1 whole file(s) are attached inside this document.
+
+HIGH    page 1  (72, 627)-(277, 639)  [invisible_text]
+        40 characters are set to render mode 3, which draws nothing on
+        the page.
 
 COULD NOT SEE
 ------------------------------------------------------------------------
@@ -43,18 +47,27 @@ of a document when it is actually a container.
 This tool does not tell you a file is safe to send. It tells you what it found,
 where it found it, and — separately, and always — where it could not see.
 
+One fact is reported once. Something painted in the same place on every page is a
+header, a footer or a watermark, and printing it once per page buries the finding on
+page 137 that actually matters. Every run also states how many pages are mostly
+picture, findings or none, because a document flattened into images comes back with
+nothing found and is not empty.
+
 ## Install
 
 Python 3.9 or newer. The only dependency is `pypdf`.
+
+```bash
+pip install before-you-send
+```
+
+Or from source:
 
 ```bash
 git clone https://github.com/Waiga/before-you-send
 cd before-you-send
 pip install -e .
 ```
-
-It is not published to PyPI, so `pip install before-you-send` will not work.
-Install it from source, as above.
 
 ## Use
 
@@ -117,6 +130,19 @@ and the tool does not read for meaning.
 never a finding, however confidential. This looks only for what a sender does not
 know is there.
 
+**Runs of one or two characters.** Too short to carry a name, a number of
+consequence, or a word, and on real documents almost always a plot marker, a table
+rule or a mathematical glyph. Measured across 887 published PDFs they were 57% of
+every covered-text finding and 100% of every "too small to read" one, and all of
+them were wrong. The count of runs passed over is printed in every report, because a
+threshold nobody is told about is just an undocumented bug.
+
+**What text says, when a font gives no way to know.** A composite font addresses
+glyphs by number. Where it carries no map from those numbers to characters, runs in
+it are located and measured exactly and their text is not guessed at. Composite fonts
+using an encoding other than Identity keep having their widths estimated, for the
+same reason: a width read against the wrong glyph is worse than an admitted estimate.
+
 When an image is painted over text, the tool says so as a **blind spot** — a
 located place it can prove something is drawn at and cannot see under. The same
 goes for a shape whose colour the file names indirectly, through a pattern or a
@@ -165,6 +191,84 @@ chart, a bounded logo stamp, a spot-colour brand bar, a white caption on a
 photograph, a scanned page's searchable text layer, text bleeding off an edge,
 and a signature that explains an extra revision. Each must stay silent, and a run
 that loses one of them fails.
+
+## Against real documents
+
+The suite passes, and that was never the question. A tool like this can be green on
+every test it wrote for itself and still be useless on the first real file it meets,
+so it was pointed at 931 published PDFs it had nothing to do with: the US Federal
+Register, arXiv, gov.uk, the World Health Organization, US court filings, and
+scanned FOIA releases from the FBI's reading room. Six producers, which matters more
+than six sources — a Word document, a LaTeX paper and an InDesign report fail in
+different ways.
+
+It found eleven classes of defect. The first pass produced **4,280 findings across
+450 documents, 3,126 of them HIGH**, and almost none of them worth reading.
+
+| | before | after |
+|---|---|---|
+| findings, same 450 documents | 4,280 | 1,703 |
+| of which HIGH | 3,126 | 954 |
+| median per document | 6 | 3 |
+| worst document | 604 | 177 |
+
+Across the full 931, the median document now reports 3 findings and the 90th
+percentile reports 4. Nothing crashed, timed out, or came back unreadable.
+
+Four are worth naming, because none of them could have been found any other way:
+
+**The check most likely to hide a real leak never ran.** `earlier_versions_retained`
+began by asking the parsed trailer for `/Prev`. A parser only surfaces that key for a
+classic cross-reference table, and every modern PDF — Word, Acrobat, InDesign,
+Chrome, every linearized government file — uses a cross-reference stream instead, so
+the check returned on its first line and never reached the byte walk written for
+exactly this question. It was silent on **256 of the 931**. Most of those are
+linearization, which it knows how to excuse; 34 are retained earlier versions with no
+benign explanation, and 5 are serious. Every fixture in the suite used a classic xref
+table, so no test could have seen it.
+
+**A border was being read as a block.** One 175-page government table produced
+**8,638** covered-text findings, 68% of every such finding in the corpus. Rendered,
+the page is an ordinary Word table: white cells, black gridlines, entirely readable.
+A word processor draws a cell edge as an outer outline and an inner one in a single
+path; measured as one rectangle, a hollow frame becomes a solid block of ink over
+everything inside it. That document now reports 4 findings, all true.
+
+**Composite fonts were being guessed at.** A Type0 font addresses glyphs by number,
+two bytes at a time, and keeps its widths on a descendant font. Read as though the
+bytes were characters, a run measures about twice as wide as it is — and that width
+is the denominator of the coverage fraction that decides whether a passage was
+redacted. Twice too wide halves the coverage, drops it under the threshold, and the
+finding never appears. On the Word and InDesign slice, documents relying on estimated
+widths fell from 78% to 47%.
+
+**One fact was being reported once per page.** The Federal Register prints a
+typesetter's control line and an operator's account name in white in the margin of
+every page. Both are real, and one of them names a person. Reported per page they
+came to 62 HIGH findings on a 31-page notice and 470 on the longest document in the
+corpus, which is the same as reporting nothing: a genuine single-page leak could not
+have been found in that. It now reports 3, and the two HIGH ones are true.
+
+### What that does and does not establish
+
+It establishes that the tool survives real-world PDFs, and it measures how often it
+cries wolf. Every number above is a false-positive number.
+
+It is much weaker evidence about the failure that actually hurts somebody, which is
+the one where a document *is* leaking and the report says nothing. Ordinary published
+documents are overwhelmingly documents where nobody tried to hide anything, so they
+exercise that path barely at all.
+
+So the corpus was also run through an independent check for it: every page extracted
+with `pdftotext` and separately rendered and read with OCR, on the theory that text
+which extracts but is not on the rendered page is text somebody cannot see. Across
+450 documents that turned up two candidates, and both were OCR failing on dense
+numeric tables rather than the tool missing anything. That is real evidence and it is
+not proof. It is one independent check, on a population where concealment is rare.
+
+Concretely: this has not been validated against a corpus of documents where people
+actually attempted redaction and got it wrong. If you have one, that is the most
+useful thing you could point this at.
 
 ## Privacy
 
@@ -222,6 +326,11 @@ committed to this repository, and none of the examples came from a real document
 attacking the tool after the first suite was already passing. Most of those
 defects were false positives on entirely ordinary documents, which is the failure
 worth guarding hardest against.
+
+`tests/test_corpus_defects.py` holds one test per defect found afterwards, by
+running the finished tool over 931 real published PDFs it had never seen. Every one
+of them names the document shape that produced it, and every one was checked to fail
+without its fix — a test that passes either way is not a test.
 
 ## Licence
 

@@ -589,3 +589,18 @@ def test_a_very_thick_border_still_covers_what_lies_under_its_edge(build):
         P.one_page(P.text(SECRET, 76, 680) + P.frame_path(60, 600, 400, 200, thickness=120)),
     )
     assert len(findings_for(path, "covered_text")) == 1
+
+
+def test_the_reported_version_matches_the_installed_package():
+    """A hand-written version string drifts the moment a release is cut.
+
+    A sibling project shipped 0.2.0 announcing itself as 0.1.0, because the number
+    was written in two places and only one was changed. Nothing in its test suite
+    could see it: the string agreed with itself everywhere in the source tree.
+    Installing the built artefact and asking it was what found the lie.
+    """
+    from importlib.metadata import version
+
+    from before_you_send import __version__
+
+    assert __version__ == version("before-you-send")
