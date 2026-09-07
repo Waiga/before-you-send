@@ -34,11 +34,13 @@ def inspect_document(path: str) -> Report:
     doc = load(path)
     report = Report(path=doc.path, pages_read=doc.page_count)
     widths_estimated = False
+    text_unrecoverable = False
 
     for number, page in enumerate(doc.pages, start=1):
         label = f"page {number}"
         content = read_page(doc.reader, page)
         widths_estimated = widths_estimated or content.estimated_widths
+        text_unrecoverable = text_unrecoverable or content.unrecoverable_text
 
         if content.unreadable_reason:
             report.note_blindspot(label, "whole page", content.unreadable_reason)
@@ -90,6 +92,14 @@ def inspect_document(path: str) -> Report:
             "picture. Nothing inside a picture is examined, so on those pages this "
             "run has very little to say. A document flattened into images will come "
             "back with nothing found and will not be empty",
+        )
+
+    if text_unrecoverable:
+        report.note_unchecked(
+            "What some of the text says",
+            "a font here addresses its glyphs by number and carries no map from "
+            "those numbers to characters, so runs in it are located and measured "
+            "exactly but what they say cannot be recovered and is not guessed at",
         )
 
     if widths_estimated:
