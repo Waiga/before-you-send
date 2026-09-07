@@ -270,3 +270,50 @@ def narrow_font() -> bytes:
 def utf16_string(text: str) -> bytes:
     """A hex string, which survives to the reader without re-encoding."""
     return b"<FEFF" + text.encode("utf-16-be").hex().upper().encode() + b">"
+
+
+# --- composite (Type0) fonts -----------------------------------------------
+
+
+def type0_font(descendant: int, to_unicode: int | None = None) -> bytes:
+    """A composite font addressing glyphs by two-byte identifier."""
+    extra = f"/ToUnicode {to_unicode} 0 R" if to_unicode else ""
+    return (
+        b"<</Type/Font/Subtype/Type0/BaseFont/AAAAAA+Calibri/Encoding/Identity-H"
+        b"/DescendantFonts[" + str(descendant).encode() + b" 0 R]"
+        + extra.encode()
+        + b">>"
+    )
+
+
+def cid_font(widths: str = "[1 [500 500 500 500 500 500 500 500]]") -> bytes:
+    """The descendant that actually carries the widths, keyed by glyph id."""
+    return (
+        b"<</Type/Font/Subtype/CIDFontType2/BaseFont/AAAAAA+Calibri"
+        b"/CIDSystemInfo<</Registry(Adobe)/Ordering(Identity)/Supplement 0>>"
+        b"/DW 1000/W" + widths.encode() + b">>"
+    )
+
+
+def cid_to_unicode(mapping: dict) -> bytes:
+    """A /ToUnicode CMap: what each glyph identifier actually says."""
+    entries = "".join(
+        f"<{code:04X}> <{ord(char):04X}>\n" for code, char in sorted(mapping.items())
+    )
+    body = (
+        "/CIDInit /ProcSet findresource begin\n12 dict begin\nbegincmap\n"
+        f"{len(mapping)} beginbfchar\n{entries}endbfchar\n"
+        "endcmap\nCMapName currentdict /CMap defineresource pop\nend\nend\n"
+    )
+    return stream(body.encode())
+
+
+def glyph_text(codes: list, x: float, y: float, size: float = 12) -> bytes:
+    """Show a run of glyphs by identifier, the way a composite font is used."""
+    hexed = "".join(f"{c:04X}" for c in codes)
+    return b"BT 0 Tr /F1 %g Tf %g %g Td <%s> Tj ET\n" % (
+        size,
+        x,
+        y,
+        hexed.encode(),
+    )
