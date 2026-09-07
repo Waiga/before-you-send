@@ -317,3 +317,23 @@ def glyph_text(codes: list, x: float, y: float, size: float = 12) -> bytes:
         y,
         hexed.encode(),
     )
+
+
+def frame_path(x: float, y: float, w: float, h: float, thickness: float = 1.0,
+               rgb: tuple = (0, 0, 0), rule: str = "f") -> bytes:
+    """A border: an outer outline and an inner one, filled as a single path.
+
+    This is how a word processor draws a table cell edge or a text-box outline. The
+    middle is never painted, however solid the bounding rectangle looks.
+    """
+    r, g, b = rgb
+    t = thickness
+    return (
+        b"%g %g %g rg %g %g m %g %g l %g %g l %g %g l h "
+        b"%g %g m %g %g l %g %g l %g %g l h %s\n"
+    ) % (
+        r, g, b,
+        x, y, x + w, y, x + w, y + h, x, y + h,
+        x + t, y + t, x + w - t, y + t, x + w - t, y + h - t, x + t, y + h - t,
+        rule.encode(),
+    )

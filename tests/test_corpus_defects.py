@@ -544,3 +544,48 @@ def test_a_composite_font_with_an_encoding_we_do_not_read_keeps_estimating(build
     doc = load(path)
     runs = read_page(doc.reader, next(iter(doc.pages))).text_runs
     assert runs and all(r.width_estimated for r in runs)
+
+
+# --- a border is not a block ------------------------------------------------
+
+
+def test_a_table_cell_border_does_not_count_as_ink_over_its_contents(build):
+    """The largest single false positive in the corpus, by a wide margin.
+
+    A 175-page government table produced 8,638 covered-text findings, 68% of every
+    such finding across 887 documents, and the page is an ordinary Word table with
+    white cells and black gridlines that reads perfectly well. Every "opaque shape"
+    was a cell border: an outer outline and an inner one in one path, measured as
+    one rectangle and therefore as a solid block of ink over the cell.
+    """
+    path = build(
+        "table_border",
+        P.one_page(P.text(SECRET, 76, 680) + P.frame_path(70, 674, 220, 16)),
+    )
+    assert findings_for(path, "covered_text") == []
+
+
+def test_the_same_border_drawn_with_the_even_odd_rule_is_also_not_a_block(build):
+    path = build(
+        "table_border_eo",
+        P.one_page(P.text(SECRET, 76, 680) + P.frame_path(70, 674, 220, 16, rule="f*")),
+    )
+    assert findings_for(path, "covered_text") == []
+
+
+def test_a_solid_rectangle_over_text_is_still_a_cover(build):
+    """One piece, no hole. The fix must not have cost the check its whole point."""
+    path = build(
+        "solid_over_text",
+        P.one_page(P.text(SECRET, 72, 680) + P.fill_rect(70, 674, 220, 16)),
+    )
+    assert len(findings_for(path, "covered_text")) == 1
+
+
+def test_a_very_thick_border_still_covers_what_lies_under_its_edge(build):
+    """The bands are real ink and must keep behaving like it."""
+    path = build(
+        "thick_border",
+        P.one_page(P.text(SECRET, 76, 680) + P.frame_path(60, 600, 400, 200, thickness=120)),
+    )
+    assert len(findings_for(path, "covered_text")) == 1
