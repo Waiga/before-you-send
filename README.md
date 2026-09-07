@@ -17,7 +17,8 @@ HIGH    page 1  (72, 657)-(258, 669)  [covered_text]
         covering about 100% of the run.
 
 HIGH    page 1  (72, 627)-(312, 639)  [invisible_text]
-        40 characters are set to render mode 3, which draws nothing.
+        40 characters are set to render mode 3, which draws nothing on
+        the page.
 
 HIGH    document  attachments  [embedded_files]
         1 whole file(s) are attached inside this document.
@@ -88,6 +89,8 @@ before-you-send examples/careful-letter.pdf
 | `active_content` | high | Scripts, launch actions, or automatic form submissions. |
 | `form_field_values` | high / medium | Form fields still holding what somebody typed. High when the field is hidden. |
 | `earlier_versions_retained` | high / medium / low | Previous versions of the file kept inside it. Low when a signature explains it. |
+| `text_clipped_away` | high | Text excluded by a clipping path, so none of it is drawn. |
+| `text_too_small_to_read` | high | Text scaled to effectively zero size. |
 | `text_outside_page` | medium | Text parked entirely outside the visible page. |
 | `hidden_layers` | medium | Layers switched off. The content is still there. |
 | `annotation_authors` | medium | Comments and markup, and the names attached to them. |
@@ -96,6 +99,7 @@ before-you-send examples/careful-letter.pdf
 | `xmp_metadata` | medium / low | A second author record, which editing tools often forget to update. |
 | `descriptive_metadata` | low | Title, subject or keywords — frequently the original filename. |
 | `encryption_without_a_password` | low | Restrictions the file asks for but cannot enforce. |
+| `scanned_text_layer` | low | Invisible text under a page-sized image: the searchable layer of a scan, reported so you know it extracts. |
 
 ## What it does not check
 
@@ -114,10 +118,12 @@ never a finding, however confidential. This looks only for what a sender does no
 know is there.
 
 When an image is painted over text, the tool says so as a **blind spot** — a
-located place it can prove something is drawn at and cannot see under. Blind
-spots are printed separately from findings and are never counted as findings,
-because a report that says "no problems" about a page it could not read is worse
-than no report.
+located place it can prove something is drawn at and cannot see under. The same
+goes for a shape whose colour the file names indirectly, through a pattern or a
+spot colour, where whether it conceals anything cannot be decided from the
+drawing instructions at all. Blind spots are printed separately from findings and
+are never counted as findings, because a report that says "no problems" about a
+page it could not read is worse than no report.
 
 ## How it tells a redaction from a design choice
 
@@ -133,12 +139,32 @@ text, then box   ->  the box was put there to hide the text     reported
 box, then text   ->  the box is a background the text sits on   not reported
 ```
 
-That is a fact read out of the file, not a threshold that had to be tuned. The
-test suite holds both cases as a matched pair, along with the other innocent
-twins: an outlined box that covers nothing, a see-through highlight, a panel
-clipping the end of a line, text bleeding off an edge, and a signature that
-explains an extra revision. Each must stay silent, and a run of the suite that
-loses one of them fails.
+Order alone is not enough, because a shape is not painted everywhere its path
+reaches. Three things bound it, and all three had to be modelled before this was
+usable on real documents:
+
+- **a clipping path**, which trims everything drawn after it. Without it, every
+  chart from matplotlib or a browser's print-to-PDF reports its own caption as a
+  covered secret.
+- **a form's bounding box**, a hard limit on what that form draws. Without it, a
+  small logo stamp whose artwork is larger than its box appears to cover the page.
+- **blending and soft masks**, which let what is underneath show through. A
+  flattened highlighter mark is an opaque yellow rectangle drawn over text, and
+  reading only its alpha value reports every highlight in a document.
+
+The order is a fact from the file. The verdict is not purely a fact: it is gated
+by a coverage threshold, an opacity threshold, a colour tolerance, and — for any
+font that does not declare its character widths, which includes Helvetica and
+Times — an estimate of how wide a line of text really is. Where that estimate is
+load-bearing the report says "about", and it is listed under what was not checked.
+
+The test suite holds every innocent twin as a matched pair against the case it
+resembles: an outlined box that covers nothing, a see-through highlight, a
+multiply-blended highlighter, a panel clipping the end of a line, a clipped
+chart, a bounded logo stamp, a spot-colour brand bar, a white caption on a
+photograph, a scanned page's searchable text layer, text bleeding off an edge,
+and a signature that explains an extra revision. Each must stay silent, and a run
+that loses one of them fails.
 
 ## Privacy
 
@@ -149,6 +175,12 @@ The report withholds what it found by default. You get `page 1 (72, 657)-(258, 6
 and a character count, not the account number underneath. That is deliberate: the
 report of a document you are worried about is itself the thing most likely to be
 pasted into a chat window. Use `--show-content` when you actually want to see it.
+
+Control characters in anything recovered from the document are stripped before
+printing, so a hostile file cannot use its own title to repaint your terminal.
+
+The report header echoes the path you gave it, which may itself name a client or
+a matter. Worth knowing before pasting one.
 
 It never writes to the file it is reading, and it has no repair mode. A tool that
 silently strips something you needed is a data-loss tool wearing a safety label.
@@ -185,6 +217,11 @@ ruff check .
 
 Every test fixture is built from literal bytes in `tests/pdfbuild.py`. No PDF is
 committed to this repository, and none of the examples came from a real document.
+
+`tests/test_regressions.py` holds one test per defect found by deliberately
+attacking the tool after the first suite was already passing. Most of those
+defects were false positives on entirely ordinary documents, which is the failure
+worth guarding hardest against.
 
 ## Licence
 

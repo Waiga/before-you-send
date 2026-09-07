@@ -7,6 +7,7 @@ three survive being emailed, and none of them are visible when reading the pages
 
 from __future__ import annotations
 
+from before_you_send.annotations import scan
 from before_you_send.findings import Finding, Level
 
 ACTIVE_KEYS = {
@@ -43,15 +44,12 @@ def embedded_files(report, doc) -> None:
 
     if not names:
         # Older producers attach through annotations rather than the name tree.
-        for page in doc.pages:
+        found = scan(doc.pages)
+        found.note_gap(report, "embedded_files")
+        for _, annot in found.items:
             try:
-                annots = page.get("/Annots")
-                if annots is None:
-                    continue
-                for annot in annots.get_object():
-                    annot = annot.get_object()
-                    if str(annot.get("/Subtype", "")) == "/FileAttachment":
-                        names.append(str(annot.get("/FS", "attachment")))
+                if str(annot.get("/Subtype", "")) == "/FileAttachment":
+                    names.append(str(annot.get("/FS", "attachment")))
             except Exception:
                 continue
 
@@ -109,18 +107,16 @@ def active_content(report, doc) -> None:
                 found.setdefault("/JavaScript", []).append(f"attached to page {number}")
         except Exception:
             pass
+    annotations = scan(doc.pages)
+    annotations.note_gap(report, "active_content")
+    for number, annot in annotations.items:
         try:
-            annots = page.get("/Annots")
-            if annots is None:
+            action = annot.get("/A")
+            if action is None:
                 continue
-            for annot in annots.get_object():
-                annot = annot.get_object()
-                action = annot.get("/A")
-                if action is None:
-                    continue
-                kind = str(action.get_object().get("/S", ""))
-                if kind in ACTIVE_KEYS:
-                    found.setdefault(kind, []).append(f"on page {number}")
+            kind = str(action.get_object().get("/S", ""))
+            if kind in ACTIVE_KEYS:
+                found.setdefault(kind, []).append(f"on page {number}")
         except Exception:
             continue
 
@@ -169,18 +165,15 @@ def form_field_values(report, doc) -> None:
         return
 
     hidden = 0
-    for page in doc.pages:
+    widgets = scan(doc.pages)
+    widgets.note_gap(report, "form_field_values")
+    for _, annot in widgets.items:
         try:
-            annots = page.get("/Annots")
-            if annots is None:
+            if str(annot.get("/Subtype", "")) != "/Widget":
                 continue
-            for annot in annots.get_object():
-                annot = annot.get_object()
-                if str(annot.get("/Subtype", "")) != "/Widget":
-                    continue
-                flags = int(annot.get("/F", 0))
-                if flags & (FLAG_HIDDEN | FLAG_NOVIEW) and annot.get("/V") is not None:
-                    hidden += 1
+            flags = int(annot.get("/F", 0))
+            if flags & (FLAG_HIDDEN | FLAG_NOVIEW) and annot.get("/V") is not None:
+                hidden += 1
         except Exception:
             continue
 

@@ -46,6 +46,7 @@ def one_page(
     catalog_extra: str = "",
     trailer_extra: str = "",
     media_box: str = "[0 0 612 792]",
+    font: bytes = HELVETICA,
 ) -> bytes:
     """A single-page document whose content stream is exactly ``content``.
 
@@ -65,7 +66,7 @@ def one_page(
             + b">>"
         ),
         stream(content),
-        HELVETICA,
+        font,
     ]
     objects.extend(extra_objects or [])
     return assemble(objects, trailer_extra=trailer_extra)
@@ -184,3 +185,61 @@ def annotation(subtype: str, rect: str = "[70 670 270 690]", extra: str = "") ->
         rect.encode(),
         extra.encode(),
     )
+
+
+# --- pieces for the harder cases -------------------------------------------
+
+
+def clip_to(x: float, y: float, w: float, h: float) -> bytes:
+    """Restrict everything painted after this to a rectangle."""
+    return b"%g %g %g %g re W n\n" % (x, y, w, h)
+
+
+def saved(inner: bytes) -> bytes:
+    """Wrap content in a saved graphics state, the way a real generator does."""
+    return b"q\n" + inner + b"Q\n"
+
+
+def with_state(name: str, inner: bytes) -> bytes:
+    return b"q /%s gs\n" % name.encode() + inner + b"Q\n"
+
+
+MULTIPLY_STATE = b"<</Type/ExtGState/BM/Multiply>>"
+SOFT_MASK_STATE = b"<</Type/ExtGState/SMask<</Type/Mask/S/Luminosity>>>>"
+SEPARATION_SPACE = b"[/Separation/PANTONE#20286#20C/DeviceCMYK 7 0 R]"
+TINT_TRANSFORM = b"<</FunctionType 2/Domain[0 1]/C0[0 0 0 0]/C1[1 0.7 0 0.2]/N 1>>"
+
+
+def form(inner: bytes, bbox: str = "[0 0 40 40]", matrix: str = "") -> bytes:
+    extra = "/Type/XObject/Subtype/Form/BBox" + bbox + "/Resources<<>>"
+    if matrix:
+        extra += "/Matrix" + matrix
+    return stream(inner, extra)
+
+
+def appearance(inner: bytes, bbox: str = "[0 0 220 16]") -> bytes:
+    return stream(inner, "/Type/XObject/Subtype/Form/BBox" + bbox + "/Resources<<>>")
+
+
+def type3_font(width: int = 100, scale: str = "0.01") -> bytes:
+    """A Type 3 font whose widths are in its own glyph space, not thousandths."""
+    widths = " ".join([str(width)] * 26)
+    return (
+        b"<</Type/Font/Subtype/Type3/FontMatrix[" + scale.encode() + b" 0 0 "
+        + scale.encode() + b" 0 0]/FontBBox[0 0 100 100]"
+        b"/CharProcs<<>>/Encoding<</Type/Encoding>>"
+        b"/FirstChar 65/LastChar 90/Widths[" + widths.encode() + b"]>>"
+    )
+
+
+def narrow_font() -> bytes:
+    """A font that declares widths for only part of the range it is used with."""
+    return (
+        b"<</Type/Font/Subtype/Type1/BaseFont/Helvetica"
+        b"/FirstChar 65/LastChar 67/Widths[667 667 722]>>"
+    )
+
+
+def utf16_string(text: str) -> bytes:
+    """A hex string, which survives to the reader without re-encoding."""
+    return b"<FEFF" + text.encode("utf-16-be").hex().upper().encode() + b">"

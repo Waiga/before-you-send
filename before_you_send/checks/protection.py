@@ -6,6 +6,7 @@ something, and the step did not do what they believe it did.
 
 from __future__ import annotations
 
+from before_you_send.annotations import scan
 from before_you_send.findings import Finding, Level
 
 
@@ -15,18 +16,14 @@ def unapplied_redaction_marks(report, doc) -> None:
     Marking is one step, applying is another. Save between the two and the file
     contains a map of exactly which passages are sensitive, with all of them intact.
     """
-    marks: list = []
-    for number, page in enumerate(doc.pages, start=1):
-        try:
-            annots = page.get("/Annots")
-            if annots is None:
-                continue
-            for annot in annots.get_object():
-                if str(annot.get_object().get("/Subtype", "")) == "/Redact":
-                    marks.append(number)
-        except Exception:
-            continue
+    found = scan(doc.pages)
+    found.note_gap(report, "unapplied_redaction_marks")
 
+    marks = [
+        number
+        for number, annot in found.items
+        if str(annot.get("/Subtype", "")) == "/Redact"
+    ]
     if not marks:
         return
 

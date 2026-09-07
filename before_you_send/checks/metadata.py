@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 
+from before_you_send.annotations import scan
 from before_you_send.findings import Finding, Level
 
 DESCRIPTIVE_FIELDS = ("/Title", "/Subject", "/Keywords")
@@ -173,24 +174,22 @@ def xmp_metadata(report, doc) -> None:
 
 def annotation_authors(report, doc) -> None:
     """Comments and markup, and the names attached to them."""
+    found = scan(doc.pages)
+    found.note_gap(report, "annotation_authors")
+
     named: list = []
     with_text = 0
-    for number, page in enumerate(doc.pages, start=1):
+    for number, annot in found.items:
         try:
-            annots = page.get("/Annots")
-            if annots is None:
+            subtype = str(annot.get("/Subtype", ""))
+            if subtype in ("/Link", "/Widget", "/Popup"):
                 continue
-            for annot in annots.get_object():
-                annot = annot.get_object()
-                subtype = str(annot.get("/Subtype", ""))
-                if subtype in ("/Link", "/Widget", "/Popup"):
-                    continue
-                who = annot.get("/T")
-                what = annot.get("/Contents")
-                if who is not None and str(who).strip():
-                    named.append((number, str(who).strip()))
-                if what is not None and str(what).strip():
-                    with_text += 1
+            who = annot.get("/T")
+            what = annot.get("/Contents")
+            if who is not None and str(who).strip():
+                named.append((number, str(who).strip()))
+            if what is not None and str(what).strip():
+                with_text += 1
         except Exception:
             continue
 
