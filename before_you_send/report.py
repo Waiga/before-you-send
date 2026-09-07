@@ -17,6 +17,16 @@ from before_you_send.findings import Level, Report
 
 LEVEL_LABEL = {Level.HIGH: "HIGH  ", Level.MEDIUM: "MEDIUM", Level.LOW: "LOW   "}
 
+
+def _printable(text: str) -> str:
+    """Strip control characters out of anything recovered from the document.
+
+    What a finding recovered is attacker-controlled text. Written straight to a
+    terminal, an escape sequence in a document's title can clear the screen and
+    print a clean bill of health of its own over the top of the real report.
+    """
+    return "".join(" " if ch < " " or ch == "\x7f" else ch for ch in text)
+
 NOT_CHECKED_ALWAYS = [
     (
         "Whether anything found here is actually a secret",
@@ -45,12 +55,20 @@ NOT_CHECKED_ALWAYS = [
 ]
 
 
+def _clean_dict(entry: dict) -> dict:
+    if "sample" in entry:
+        entry["sample"] = _printable(entry["sample"])
+    return entry
+
+
 def to_json(report: Report, show_content: bool = False) -> str:
     payload = {
         "file": report.path,
         "pages_read": report.pages_read,
         "counts": report.counts(),
-        "findings": [f.as_dict(show_content) for f in report.sorted_findings()],
+        "findings": [
+            _clean_dict(f.as_dict(show_content)) for f in report.sorted_findings()
+        ],
         "could_not_see": [b.as_dict() for b in report.blindspots],
         "not_checked": [u.as_dict() for u in report.unchecked]
         + [{"topic": t, "reason": r} for t, r in NOT_CHECKED_ALWAYS],
@@ -113,7 +131,7 @@ def to_text(report: Report, show_content: bool = False, verbose: bool = False) -
                 for chunk in _wrap(finding.detail, 62):
                     lines.append(f"        {chunk}")
             if show_content and finding.sample is not None:
-                lines.append(f"        content: {finding.sample}")
+                lines.append(f"        content: {_printable(finding.sample)}")
             lines.append("")
 
     if report.blindspots:

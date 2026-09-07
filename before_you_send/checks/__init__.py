@@ -26,14 +26,18 @@ from before_you_send.checks.visibility import (
     covered_text,
     image_over_text,
     invisible_text,
+    text_clipped_away,
     text_matching_background,
     text_outside_page,
+    text_too_small_to_read,
 )
 
 PAGE_CHECKS = (
     covered_text,
     invisible_text,
     text_matching_background,
+    text_clipped_away,
+    text_too_small_to_read,
     text_outside_page,
     image_over_text,
 )

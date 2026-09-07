@@ -5,17 +5,70 @@ are and a new section is appended that points past them. Nothing is deleted. A p
 "removed" and saved this way is still in the file, in full, and comes back out with
 ordinary tools.
 
-This is also how every digital signature works, so the check has to say which case
-it is looking at rather than treating one as the other.
+This has to be read from the cross-reference chain rather than from the bytes.
+Counting how many times ``%%EOF`` appears in a file is not a count of its versions:
+an attached document contains its own, and ``/Prev`` is also a key on bookmarks and
+page trees. The question "does this file's cross-reference table point at an older
+one" has an exact answer, and it is the only one worth reporting.
 """
 
 from __future__ import annotations
 
+import re
+
 from before_you_send.findings import Finding, Level
+
+# The /Prev entry of a cross-reference section, whether it sits in a classic trailer
+# dictionary or in the dictionary of a cross-reference stream.
+_PREV = re.compile(rb"/Prev\s+(\d+)")
+
+MAX_CHAIN = 64
+
+
+def _revision_count(doc) -> int:
+    """How many cross-reference sections this file chains together.
+
+    Each hop is one earlier version of the document. The walk starts from the offset
+    the file itself points at, so bytes that merely look like a trailer are ignored.
+    """
+    try:
+        last = doc.raw.rsplit(b"startxref", 1)[1]
+        offset = int(last.split()[0])
+    except Exception:
+        return 1
+
+    seen = set()
+    revisions = 1
+    while 0 < offset < len(doc.raw) and offset not in seen and revisions < MAX_CHAIN:
+        seen.add(offset)
+        # A cross-reference section ends at its own %%EOF. Reading past that would
+        # run into the next revision and match its /Prev instead of this one's.
+        window = doc.raw[offset : offset + 4096]
+        end = window.find(b"%%EOF")
+        if end != -1:
+            window = window[:end]
+        match = _PREV.search(window)
+        if not match:
+            break
+        revisions += 1
+        try:
+            offset = int(match.group(1))
+        except Exception:
+            break
+    return revisions
+
+
+def _is_linearized(doc) -> bool:
+    """Whether this file is laid out for fast web viewing.
+
+    A linearized file has a second cross-reference section by construction, so one
+    hop is expected and says nothing about the document's history.
+    """
+    return b"/Linearized" in doc.raw[:2048]
 
 
 def _has_signature(doc) -> bool:
-    """True when the document carries a signature field, which requires an update."""
+    """True when the document carries a signature, which requires an update to add."""
     try:
         root = doc.reader.trailer["/Root"].get_object()
         form = root.get("/AcroForm")
@@ -34,20 +87,21 @@ def _has_signature(doc) -> bool:
 
 
 def earlier_versions_retained(report, doc) -> None:
-    """Earlier revisions of the document still present in the bytes."""
-    revisions = doc.raw.count(b"%%EOF")
-    if revisions < 2:
+    """Earlier revisions of the document still present in the file."""
+    if doc.reader.trailer.get("/Prev") is None:
         return
 
-    # A cross-reference section that names a previous one is what makes the older
-    # objects reachable. Without it the trailing %%EOF markers prove nothing.
-    if b"/Prev" not in doc.raw:
-        return
-
-    earlier = revisions - 1
+    earlier = max(1, _revision_count(doc) - 1)
     signed = _has_signature(doc)
+    linearized = _is_linearized(doc)
 
-    if signed and earlier == 1:
+    # One extra section with an ordinary explanation is not a finding worth alarming
+    # anybody about, but it is still worth saying, because what was in that section
+    # is readable either way.
+    explained = (signed or linearized) and earlier == 1
+    reason = "it carries a signature" if signed else "it is laid out for fast web viewing"
+
+    if explained:
         report.add(
             Finding(
                 check="earlier_versions_retained",
@@ -55,15 +109,14 @@ def earlier_versions_retained(report, doc) -> None:
                 page="document",
                 location="file structure",
                 summary=(
-                    "The file contains 1 earlier version of itself, and it carries a "
-                    "signature, which is the ordinary reason for that."
+                    "The file has one earlier cross-reference section, and "
+                    f"{reason}, which is the ordinary reason for that."
                 ),
                 detail=(
-                    "Signing a PDF appends to it rather than rewriting it, so one "
-                    "earlier version is expected here and is not evidence of anything. "
-                    "What was in that earlier version is still readable, so if the "
-                    "document was edited before it was signed, the pre-edit content "
-                    "is in the file."
+                    "Signing a PDF, and laying one out for fast web viewing, both append "
+                    "to the file rather than rewriting it. One extra section is expected "
+                    "here. Whatever was in it is still readable, so if the document was "
+                    "edited before that step, the earlier content is in the file."
                 ),
             )
         )
@@ -72,7 +125,7 @@ def earlier_versions_retained(report, doc) -> None:
     report.add(
         Finding(
             check="earlier_versions_retained",
-            level=Level.MEDIUM if signed else Level.HIGH,
+            level=Level.MEDIUM if signed or linearized else Level.HIGH,
             page="document",
             location="file structure",
             summary=(
@@ -85,12 +138,8 @@ def earlier_versions_retained(report, doc) -> None:
                 "removed, or a value changed in an earlier draft can still be read out "
                 "of the older section. Saving the document again as a new file, rather "
                 "than saving over it, is what discards the history."
-                + (
-                    " This document is also signed, and signing accounts for one of "
-                    "these updates."
-                    if signed
-                    else ""
-                )
+                + (f" Note that {reason}, which accounts for one of these." if signed or
+                   linearized else "")
             ),
         )
     )

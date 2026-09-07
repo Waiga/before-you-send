@@ -4,16 +4,20 @@ This is where the tool earns or loses its credibility. Every check here has a
 plausible innocent twin, and the job is to separate them with a fact from the file
 rather than a tuned number:
 
-    covered text            twin: a heading on a dark bar      separated by paint order
-    text matching its
-    background              twin: white text on a dark bar     separated by the bar's colour
-    text off the page       twin: content bleeding off an edge separated by needing zero overlap
-    an image over text      twin: a logo beside a paragraph    not separated, and so not a finding
+    covered text        twin: a heading on a dark bar     separated by paint order
+    text the colour of
+    its background      twin: white text on a dark bar    separated by the bar's colour
+    text off the page   twin: content bleeding off an edge separated by needing zero overlap
+    invisible text      twin: the text layer of a scan    separated by the page image
+    an image over text  twin: a logo beside a paragraph   not separated, so not a finding
+
+Where a twin cannot be separated at all, the case belongs in the blind spots and not
+in the findings.
 """
 
 from __future__ import annotations
 
-from before_you_send.content import INVISIBLE_RENDER_MODES, Box
+from before_you_send.content import INVISIBLE_RENDER_MODES
 from before_you_send.findings import Finding, Level
 
 # How much of a run must be under later paint before it counts as covered. Text that
@@ -21,17 +25,18 @@ from before_you_send.findings import Finding, Level
 # together, and is not evidence of anything.
 COVER_THRESHOLD = 0.6
 
-# Below this, a fill lets what is under it show through, so it hides nothing.
-OPAQUE_ALPHA = 0.9
-
 # How close two colours must be before text is unreadable against its background.
 COLOUR_TOLERANCE = 0.08
 
+# An image this much of the page is a scanned sheet, not an illustration.
+PAGE_IMAGE_SHARE = 0.5
+
+# Coverage is worked out from at most this many shapes. Beyond it the answer becomes
+# a lower bound, which under-reports rather than over-reports. Anything with hundreds
+# of separate opaque shapes over one line is a halftone or a chart, not a redaction.
+MAX_SHAPES_CONSIDERED = 40
+
 WHITE = (1.0, 1.0, 1.0)
-
-
-def _opaque(shape) -> bool:
-    return shape.fill is not None and shape.alpha >= OPAQUE_ALPHA
 
 
 def _close(a, b, tolerance: float = COLOUR_TOLERANCE) -> bool:
@@ -47,24 +52,38 @@ def _union_area(boxes) -> float:
         return 0.0
     if len(boxes) == 1:
         return boxes[0].area
+    if len(boxes) > MAX_SHAPES_CONSIDERED:
+        boxes = sorted(boxes, key=lambda b: -b.area)[:MAX_SHAPES_CONSIDERED]
     xs = sorted({b.x0 for b in boxes} | {b.x1 for b in boxes})
     ys = sorted({b.y0 for b in boxes} | {b.y1 for b in boxes})
     total = 0.0
     for i in range(len(xs) - 1):
         for j in range(len(ys) - 1):
             cx, cy = (xs[i] + xs[i + 1]) / 2, (ys[j] + ys[j + 1]) / 2
-            if any(b.x0 <= cx <= b.x1 and b.y0 <= cy <= b.y1 for b in boxes):
+            if any(b.holds(cx, cy) for b in boxes):
                 total += (xs[i + 1] - xs[i]) * (ys[j + 1] - ys[j])
     return total
 
 
-def _clip(inner: Box, outer: Box) -> Box:
-    return Box(
-        max(inner.x0, outer.x0),
-        max(inner.y0, outer.y0),
-        min(inner.x1, outer.x1),
-        min(inner.y1, outer.y1),
-    )
+def _start_point(run) -> tuple:
+    """A point just inside the beginning of a run.
+
+    Whether something is *behind* text is decided here rather than by area overlap,
+    because the width of a run is estimated for any font that declares no widths.
+    A bar sized snugly to real ink does not contain an over-wide estimated box, and
+    judging by area would report the bar as absent and the text as invisible.
+    """
+    return (run.box.x0 + 0.5, (run.box.y0 + run.box.y1) / 2)
+
+
+def _page_image(content, page_box) -> object | None:
+    """The image covering most of the page, if there is one."""
+    if page_box is None or page_box.area <= 0:
+        return None
+    for image in content.images:
+        if image.box.area / page_box.area >= PAGE_IMAGE_SHARE:
+            return image
+    return None
 
 
 def covered_text(report, page_label: str, content, page_box) -> None:
@@ -78,52 +97,105 @@ def covered_text(report, page_label: str, content, page_box) -> None:
         return
 
     for run in content.text_runs:
-        if run.render_mode in INVISIBLE_RENDER_MODES:
-            continue  # reported by invisible_text, and reporting it twice helps nobody
-        later = [
-            _clip(shape.box, run.box)
-            for shape in content.fills
-            if shape.order > run.order and _opaque(shape) and run.box.overlap_area(shape.box) > 0
-        ]
-        if not later:
-            continue
-        coverage = _union_area(later) / run.box.area if run.box.area else 0.0
-        if coverage < COVER_THRESHOLD:
-            continue
+        if run.render_mode in INVISIBLE_RENDER_MODES or run.clipped_away:
+            continue  # already reported by another check; saying it twice helps nobody
 
-        about = "about " if run.width_estimated else ""
-        report.add(
-            Finding(
-                check="covered_text",
-                level=Level.HIGH,
+        later = [s for s in content.fills if s.order > run.order]
+        covering = [
+            run.box.intersect(s.box) for s in later if s.conceals and run.box.overlap_area(s.box)
+        ]
+        covering = [box for box in covering if box is not None]
+
+        if covering:
+            coverage = _union_area(covering) / run.box.area if run.box.area else 0.0
+            if coverage >= COVER_THRESHOLD:
+                about = "about " if run.width_estimated else ""
+                report.add(
+                    Finding(
+                        check="covered_text",
+                        level=Level.HIGH,
+                        page=page_label,
+                        location=str(run.box),
+                        summary=(
+                            f"{len(run.text)} characters of text have an opaque shape "
+                            f"painted over them, covering {about}{coverage:.0%} of the run."
+                        ),
+                        detail=(
+                            "The shape was painted after the text, which is what a "
+                            "redaction looks like and is not what a background looks "
+                            "like. Covering text does not remove it: the characters are "
+                            "still in the file and can be selected, copied or extracted. "
+                            "To remove text you have to delete it, not draw over it."
+                        ),
+                        sample=run.text,
+                    )
+                )
+                continue
+
+        # A shape whose colour is named indirectly may or may not conceal. Saying
+        # nothing about it would be the same mistake as calling it a redaction.
+        unknown = [
+            run.box.intersect(s.box)
+            for s in later
+            if s.opacity_unknown and run.box.overlap_area(s.box)
+        ]
+        unknown = [box for box in unknown if box is not None]
+        if unknown and _union_area(unknown) / run.box.area >= COVER_THRESHOLD:
+            report.note_blindspot(
                 page=page_label,
                 location=str(run.box),
-                summary=(
-                    f"{len(run.text)} characters of text have an opaque shape painted "
-                    f"over them, covering {about}{coverage:.0%} of the run."
+                reason=(
+                    "a shape was painted over text, and the file names its colour "
+                    "indirectly through a pattern or a spot colour. Whether it hides "
+                    "the text or is a tint you can read through cannot be decided "
+                    "from the instructions alone."
                 ),
-                detail=(
-                    "The shape was painted after the text, which is what a redaction "
-                    "looks like and is not what a background looks like. Covering text "
-                    "does not remove it: the characters are still in the file and can "
-                    "be selected, copied or extracted. To remove text you have to "
-                    "delete it, not draw over it."
-                ),
-                sample=run.text,
             )
-        )
 
 
 def invisible_text(report, page_label: str, content, page_box) -> None:
     """Text drawn in a mode that paints nothing at all.
 
-    Mode 3 renders no glyphs. It is how a scanner stores the OCR layer beneath a
-    page image, which is legitimate, and it is also how text survives being
-    "removed" by a tool that only stopped drawing it.
+    Mode 3 renders no glyphs. It is how a scanner stores the searchable layer under
+    a page image, which is entirely legitimate and extremely common, and it is also
+    how text survives being "removed" by a tool that merely stopped drawing it.
+
+    The page image settles which one this is. Reporting eight hundred high findings
+    on a scanned contract would be the fastest way to make somebody stop running the
+    tool, and every one of them would be technically true and practically useless.
     """
-    for run in content.text_runs:
-        if run.render_mode not in INVISIBLE_RENDER_MODES:
-            continue
+    hidden = [r for r in content.text_runs if r.render_mode in INVISIBLE_RENDER_MODES]
+    if not hidden:
+        return
+
+    scan = _page_image(content, page_box)
+    if scan is not None:
+        under_the_scan = [r for r in hidden if r.box.covered_by(scan.box) >= COVER_THRESHOLD]
+        if under_the_scan:
+            report.add(
+                Finding(
+                    check="scanned_text_layer",
+                    level=Level.LOW,
+                    page=page_label,
+                    location=str(scan.box),
+                    summary=(
+                        f"{len(under_the_scan)} run(s) of text draw nothing and sit "
+                        "within a page-sized image, which is what a scanned page "
+                        "looks like."
+                    ),
+                    detail=(
+                        "Scanning software stores the recognised text invisibly behind "
+                        "the picture so the page can be searched. That is expected and "
+                        "is reported here only so you know the text is extractable. It "
+                        "is worth a look if this document was ever meant to be a "
+                        "picture and nothing more."
+                    ),
+                    sample=" | ".join(r.text for r in under_the_scan[:20]),
+                )
+            )
+        hidden = [r for r in hidden if r not in under_the_scan]
+
+    for run in hidden:
         report.add(
             Finding(
                 check="invisible_text",
@@ -136,10 +208,9 @@ def invisible_text(report, page_label: str, content, page_box) -> None:
                 ),
                 detail=(
                     "Nothing appears here when the page is viewed or printed, but the "
-                    "characters are present in the file and extract normally. This is "
-                    "expected under a scanned page, where it is the searchable text "
-                    "layer. Anywhere else it is content someone can read and nobody "
-                    "can see."
+                    "characters are in the file and extract normally. Under a scanned "
+                    "page image this is the ordinary searchable text layer. Anywhere "
+                    "else it is content someone can read and nobody can see."
                 ),
                 sample=run.text,
             )
@@ -149,23 +220,31 @@ def invisible_text(report, page_label: str, content, page_box) -> None:
 def text_matching_background(report, page_label: str, content, page_box) -> None:
     """Text the same colour as whatever is behind it.
 
-    White on white is the oldest trick in the format. The check has to be careful:
-    white text on a dark bar is ordinary design, and the only thing separating the
-    two cases is the colour of what was painted underneath first.
+    White on white is the oldest trick in the format. The check has to be careful in
+    two directions: white text on a dark bar is ordinary design, and text over a
+    photograph has a background this tool cannot see, so it cannot claim the page is
+    what lies behind it.
     """
     for run in content.text_runs:
-        if run.fill is None or run.render_mode in INVISIBLE_RENDER_MODES:
+        if run.fill is None or run.render_mode in INVISIBLE_RENDER_MODES or run.clipped_away:
             continue
 
-        beneath = [
-            shape
-            for shape in content.fills
-            if shape.order < run.order
-            and _opaque(shape)
-            and run.box.covered_by(shape.box) >= COVER_THRESHOLD
-        ]
-        background = beneath[-1].fill if beneath else WHITE
-        where = "the shape painted behind it" if beneath else "the page itself"
+        x, y = _start_point(run)
+
+        behind_image = any(
+            image.order < run.order and image.box.holds(x, y) for image in content.images
+        )
+        if behind_image:
+            continue  # the background is a picture, and pictures are not read here
+
+        beneath = [s for s in content.fills if s.order < run.order and s.box.holds(x, y)]
+        opaque_beneath = [s for s in beneath if s.conceals]
+
+        if beneath and not opaque_beneath:
+            continue  # something is behind it whose colour is not knowable
+
+        background = opaque_beneath[-1].fill if opaque_beneath else WHITE
+        where = "the shape painted behind it" if opaque_beneath else "the page itself"
 
         if not _close(run.fill, background):
             continue
@@ -184,6 +263,56 @@ def text_matching_background(report, page_label: str, content, page_box) -> None
                     "The text is present, extractable and selectable. Anyone who "
                     "selects the region, or runs any text extraction tool, gets it "
                     "back. Colour is not concealment."
+                ),
+                sample=run.text,
+            )
+        )
+
+
+def text_clipped_away(report, page_label: str, content, page_box) -> None:
+    """Text excluded by a clipping path, which draws none of it."""
+    for run in content.text_runs:
+        if not run.clipped_away:
+            continue
+        report.add(
+            Finding(
+                check="text_clipped_away",
+                level=Level.HIGH,
+                page=page_label,
+                location=str(run.box),
+                summary=(
+                    f"{len(run.text)} characters lie entirely outside the clipping "
+                    "path in force, so none of it is drawn."
+                ),
+                detail=(
+                    "A clipping path limits where later drawing appears. Text outside "
+                    "it is never painted, and is never removed either. It extracts "
+                    "exactly like any other text on the page."
+                ),
+                sample=run.text,
+            )
+        )
+
+
+def text_too_small_to_read(report, page_label: str, content, page_box) -> None:
+    """Text scaled down to nothing, which is a way of hiding it in plain sight."""
+    for run in content.text_runs:
+        if not run.too_small_to_read or run.render_mode in INVISIBLE_RENDER_MODES:
+            continue
+        report.add(
+            Finding(
+                check="text_too_small_to_read",
+                level=Level.HIGH,
+                page=page_label,
+                location=str(run.box),
+                summary=(
+                    f"{len(run.text)} characters are drawn at effectively zero size "
+                    "and cannot be read at any zoom."
+                ),
+                detail=(
+                    "Shrinking text to nothing leaves it fully present in the file. It "
+                    "extracts at full size and reads normally. Legitimate reasons for "
+                    "this are rare."
                 ),
                 sample=run.text,
             )
@@ -231,7 +360,10 @@ def image_over_text(report, page_label: str, content, page_box) -> None:
     """
     if not content.images or not content.text_runs:
         return
+    scan = _page_image(content, page_box)
     for image in content.images:
+        if image is scan:
+            continue  # a whole scanned page is covered by scanned_text_layer
         under = [
             run
             for run in content.text_runs
