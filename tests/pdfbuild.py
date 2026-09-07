@@ -72,6 +72,33 @@ def one_page(
     return assemble(objects, trailer_extra=trailer_extra)
 
 
+def many_pages(contents: list, media_box: str = "[0 0 612 792]") -> bytes:
+    """A document of several pages, each with its own content stream.
+
+    Object numbers: 1 catalog, 2 pages, then page/contents in pairs from 3, and the
+    shared font last. Needed for anything about repetition, which cannot be shown
+    on a single page.
+    """
+    count = len(contents)
+    font_number = 3 + 2 * count
+    kids = " ".join(f"{3 + 2 * i} 0 R" for i in range(count))
+    objects = [
+        b"<</Type/Catalog/Pages 2 0 R>>",
+        f"<</Type/Pages/Kids[{kids}]/Count {count}>>".encode(),
+    ]
+    for index, body in enumerate(contents):
+        objects.append(
+            (
+                f"<</Type/Page/Parent 2 0 R/MediaBox{media_box}"
+                f"/Resources<</Font<</F1 {font_number} 0 R>>>>"
+                f"/Contents {4 + 2 * index} 0 R>>"
+            ).encode()
+        )
+        objects.append(stream(body))
+    objects.append(HELVETICA)
+    return assemble(objects)
+
+
 def with_second_revision(base: bytes, replacements: dict) -> bytes:
     """Append an incremental update that rewrites some objects in place.
 

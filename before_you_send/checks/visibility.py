@@ -20,6 +20,16 @@ from __future__ import annotations
 from before_you_send.content import INVISIBLE_RENDER_MODES
 from before_you_send.findings import Finding, Level
 
+# Annotations that are drawn over the text they refer to as a matter of definition.
+# A redaction mark sits on the passage it marks; a highlight sits on the words it
+# highlights. Their overlap with text is what they are, not evidence that somebody
+# concealed something, and the redaction marks already have a check of their own.
+# Reported here as well, a FOIA release with forty pending redactions produces one
+# correct finding and forty duplicates of it.
+MARKUP_ANNOTATIONS = frozenset(
+    {"/Redact", "/Highlight", "/Underline", "/StrikeOut", "/Squiggly", "/Widget"}
+)
+
 # How much of a run must be under later paint before it counts as covered. Text that
 # merely clips the edge of a box is the normal result of two elements sitting close
 # together, and is not evidence of anything.
@@ -37,6 +47,25 @@ PAGE_IMAGE_SHARE = 0.5
 MAX_SHAPES_CONSIDERED = 40
 
 WHITE = (1.0, 1.0, 1.0)
+
+# A run this short is not judged at all. One or two characters cannot carry a name,
+# a number of consequence, or a word, and nobody conceals a secret by covering a
+# single glyph. What they are, overwhelmingly, is drawing: a plot marker painted
+# across an axis label, a table rule crossing a letter, a maths glyph set in its own
+# tiny text object. Measured on 887 real published PDFs, single and double character
+# runs were 57% of every covered_text finding, 70% of every clipped one, and 100% of
+# every "too small to read" one — all of them false. This is a deliberate blindness
+# and it is stated in the report, because a threshold that is not disclosed is just
+# an undocumented bug.
+MIN_RUN_CHARS = 3
+
+
+def _too_short(report, run) -> bool:
+    """True when a run is too short to be worth judging. Counted, never silent."""
+    if len(run.text.strip()) >= MIN_RUN_CHARS:
+        return False
+    report.note_short_run()
+    return True
 
 
 def _close(a, b, tolerance: float = COLOUR_TOLERANCE) -> bool:
@@ -76,14 +105,31 @@ def _start_point(run) -> tuple:
     return (run.box.x0 + 0.5, (run.box.y0 + run.box.y1) / 2)
 
 
-def _page_image(content, page_box) -> object | None:
-    """The image covering most of the page, if there is one."""
-    if page_box is None or page_box.area <= 0:
-        return None
-    for image in content.images:
-        if image.box.area / page_box.area >= PAGE_IMAGE_SHARE:
-            return image
-    return None
+def picture_share(content, page_box) -> float:
+    """How much of the page is covered by pictures, counting overlaps once."""
+    if page_box is None or page_box.area <= 0 or not content.images:
+        return 0.0
+    inside = [i.box.intersect(page_box) for i in content.images]
+    covered = _union_area([b for b in inside if b is not None])
+    return min(1.0, covered / page_box.area)
+
+
+def _page_images(content, page_box) -> list:
+    """The images that together make up a scanned sheet, if this page is one.
+
+    A scan is not always one picture. Fax-derived pipelines, MFP firmware and
+    anything built from TIFF strips store a page as a stack of horizontal bands,
+    and mixed-raster and JBIG2 encoders split it into layers where no single
+    piece reaches half the page. Asking whether *one* image covers the page
+    answers "no" for all of them, and the searchable text layer underneath then
+    reports as dozens of separate high findings — the exact outcome this guard
+    was written to prevent, on the exact documents most likely to be scanned.
+
+    So the question is asked of the pictures together, not one at a time.
+    """
+    if picture_share(content, page_box) < PAGE_IMAGE_SHARE:
+        return []
+    return list(content.images)
 
 
 def covered_text(report, page_label: str, content, page_box) -> None:
@@ -99,8 +145,14 @@ def covered_text(report, page_label: str, content, page_box) -> None:
     for run in content.text_runs:
         if run.render_mode in INVISIBLE_RENDER_MODES or run.clipped_away:
             continue  # already reported by another check; saying it twice helps nobody
+        if _too_short(report, run):
+            continue
 
-        later = [s for s in content.fills if s.order > run.order]
+        later = [
+            s
+            for s in content.fills
+            if s.order > run.order and s.annotation not in MARKUP_ANNOTATIONS
+        ]
         covering = [
             run.box.intersect(s.box) for s in later if s.conceals and run.box.overlap_area(s.box)
         ]
@@ -168,20 +220,23 @@ def invisible_text(report, page_label: str, content, page_box) -> None:
     if not hidden:
         return
 
-    scan = _page_image(content, page_box)
-    if scan is not None:
-        under_the_scan = [r for r in hidden if r.box.covered_by(scan.box) >= COVER_THRESHOLD]
+    scan = _page_images(content, page_box)
+    if scan:
+        under_the_scan = [
+            r for r in hidden
+            if any(r.box.covered_by(i.box) >= COVER_THRESHOLD for i in scan)
+        ]
         if under_the_scan:
             report.add(
                 Finding(
                     check="scanned_text_layer",
                     level=Level.LOW,
                     page=page_label,
-                    location=str(scan.box),
+                    location=str(scan[0].box),
                     summary=(
                         f"{len(under_the_scan)} run(s) of text draw nothing and sit "
-                        "within a page-sized image, which is what a scanned page "
-                        "looks like."
+                        "within the picture that fills this page, which is what a "
+                        "scanned page looks like."
                     ),
                     detail=(
                         "Scanning software stores the recognised text invisibly behind "
@@ -196,6 +251,8 @@ def invisible_text(report, page_label: str, content, page_box) -> None:
         hidden = [r for r in hidden if r not in under_the_scan]
 
     for run in hidden:
+        if _too_short(report, run):
+            continue
         report.add(
             Finding(
                 check="invisible_text",
@@ -226,7 +283,25 @@ def text_matching_background(report, page_label: str, content, page_box) -> None
     what lies behind it.
     """
     for run in content.text_runs:
-        if run.fill is None or run.render_mode in INVISIBLE_RENDER_MODES or run.clipped_away:
+        if run.render_mode in INVISIBLE_RENDER_MODES or run.clipped_away:
+            continue
+        if _too_short(report, run):
+            continue
+        if run.fill is None:
+            # The file names this text's colour indirectly, through a spot colour, a
+            # pattern or a DeviceN space, so whether it matches its background cannot
+            # be decided from the drawing instructions. Dropping it silently would
+            # report "checked and clean" about text that was never checked at all —
+            # the mirror of the case covered_text already records below.
+            report.note_blindspot(
+                page=page_label,
+                location=str(run.box),
+                reason=(
+                    "text is drawn in a colour the file names indirectly, through a "
+                    "spot colour or a pattern. Whether it is the same colour as what "
+                    "is behind it cannot be decided from the instructions alone."
+                ),
+            )
             continue
 
         x, y = _start_point(run)
@@ -274,6 +349,8 @@ def text_clipped_away(report, page_label: str, content, page_box) -> None:
     for run in content.text_runs:
         if not run.clipped_away:
             continue
+        if _too_short(report, run):
+            continue
         report.add(
             Finding(
                 check="text_clipped_away",
@@ -298,6 +375,8 @@ def text_too_small_to_read(report, page_label: str, content, page_box) -> None:
     """Text scaled down to nothing, which is a way of hiding it in plain sight."""
     for run in content.text_runs:
         if not run.too_small_to_read or run.render_mode in INVISIBLE_RENDER_MODES:
+            continue
+        if _too_short(report, run):
             continue
         report.add(
             Finding(
@@ -330,6 +409,8 @@ def text_outside_page(report, page_label: str, content, page_box) -> None:
     for run in content.text_runs:
         if run.box.overlap_area(page_box) > 0:
             continue
+        if _too_short(report, run):
+            continue
         report.add(
             Finding(
                 check="text_outside_page",
@@ -360,9 +441,9 @@ def image_over_text(report, page_label: str, content, page_box) -> None:
     """
     if not content.images or not content.text_runs:
         return
-    scan = _page_image(content, page_box)
+    scan = _page_images(content, page_box)
     for image in content.images:
-        if image is scan:
+        if any(image is part for part in scan):
             continue  # a whole scanned page is covered by scanned_text_layer
         under = [
             run

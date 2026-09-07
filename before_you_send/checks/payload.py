@@ -155,9 +155,24 @@ def form_field_values(report, doc) -> None:
     for name, field in fields.items():
         try:
             value = field.get("/V")
+            kind = str(field.get("/FT", ""))
+            default = field.get("/DV")
         except Exception:
             continue
         if value is None or not str(value).strip():
+            continue
+        # A signature is not something somebody typed into a box. Every filled field
+        # in a 887-document sample of real published PDFs was one of these, because
+        # publishers sign what they release, and calling each of them a leaked answer
+        # made this check fire on whole government archives and mean nothing.
+        if kind == "/Sig":
+            continue
+        # An unticked checkbox stores /Off. It is the absence of an answer written
+        # down, not an answer.
+        if kind == "/Btn" and str(value) == "/Off":
+            continue
+        # A value the form itself shipped with is the designer's, not the filler's.
+        if default is not None and str(value) == str(default):
             continue
         filled.append((str(name), str(value)))
 

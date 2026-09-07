@@ -124,6 +124,17 @@ class Box:
         return f"({self.x0:.0f}, {self.y0:.0f})-({self.x1:.0f}, {self.y1:.0f})"
 
 
+# A clip that admits nothing.
+#
+# ``None`` as a clip means unbounded, and ``Box.intersect`` returns ``None`` when two
+# boxes do not meet. Those two meanings collide: an empty clip written back as
+# ``None`` turns "nothing may be drawn" into "everything may be drawn", which is the
+# wrong direction — it drops an enclosing clip and lets a shape cover text it should
+# have been trimmed away from. A degenerate rectangle carries the empty meaning
+# unambiguously, because intersecting anything with it is empty in turn.
+EMPTY_CLIP = Box(0.0, 0.0, 0.0, 0.0)
+
+
 @dataclass
 class TextRun:
     order: int
@@ -145,6 +156,12 @@ class FilledShape:
     fill: tuple | None
     alpha: float
     see_through: bool = False
+    # The annotation subtype this shape was painted by, when it came from an
+    # annotation's appearance rather than from the page itself. A redaction mark and
+    # a highlight are drawn over the text they refer to *by definition*, so the fact
+    # that they sit on top of it is not evidence of anything and belongs to the check
+    # that owns them.
+    annotation: str | None = None
 
     @property
     def conceals(self) -> bool:
@@ -365,13 +382,37 @@ class _Walker:
         self.content = content
         self.order = 0
         self.budget = _Budget()
+        self.annotation: str | None = None
 
     def next_order(self) -> int:
         self.order += 1
         return self.order
 
-    def run(self, operations, resources, ctm: Matrix, depth: int, clip: Box | None) -> None:
+    def run(
+        self,
+        operations,
+        resources,
+        ctm: Matrix,
+        depth: int,
+        clip: Box | None,
+        inherited: _State | None = None,
+    ) -> None:
+        """Interpret one content stream.
+
+        A form XObject inherits the whole graphics state of whoever invoked it, not
+        just the transform and the clip. Producers rely on that: Illustrator,
+        InDesign, Acrobat's flattener and Ghostscript all set the blend mode or the
+        alpha *outside* the form and then invoke it, so a watermark or a highlighter
+        mark reads as fully opaque black paint if the form starts from defaults.
+        That turns ordinary design into the tool's loudest finding, which is the
+        worst possible place to be wrong.
+        """
         state = _State(ctm=ctm, clip=clip)
+        if inherited is not None:
+            state.fill = inherited.fill
+            state.alpha = inherited.alpha
+            state.see_through = inherited.see_through
+            state.direct_colour = inherited.direct_colour
         stack: list = []
         path_points: list = []
         pending_clip = False
@@ -462,10 +503,15 @@ class _Walker:
                                 state.fill,
                                 state.alpha,
                                 state.see_through,
+                                self.annotation,
                             )
                         )
                 if pending_clip:
-                    state.clip = path_box.intersect(state.clip) if path_box else None
+                    # A clip path that bounds nothing — a zero-size rectangle, or a
+                    # path of a single point — admits nothing, and must not be
+                    # written back as the unbounded clip.
+                    narrowed = path_box.intersect(state.clip) if path_box else None
+                    state.clip = narrowed if narrowed is not None else EMPTY_CLIP
                     pending_clip = False
                 path_points = []
 
@@ -666,6 +712,7 @@ class _Walker:
                 inner_ctm,
                 depth + 1,
                 inner_clip,
+                inherited=state,
             )
         except Exception:
             return
@@ -785,10 +832,15 @@ def _walk_annotations(reader, page, walker) -> None:
                 )
             resources = appearance.get("/Resources")
             resources = resources.get_object() if resources is not None else {}
-            walker.run(
-                ContentStream(appearance, reader).operations, resources, placement, 1, clip
-            )
+            walker.annotation = str(annot.get("/Subtype", "")) or None
+            try:
+                walker.run(
+                    ContentStream(appearance, reader).operations, resources, placement, 1, clip
+                )
+            finally:
+                walker.annotation = None
         except Exception:
+            walker.annotation = None
             continue
 
 

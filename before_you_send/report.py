@@ -55,9 +55,26 @@ NOT_CHECKED_ALWAYS = [
 ]
 
 
+SAMPLE_LIMIT = 400
+
+
+def _sample(text: str) -> str:
+    """Recovered content, made safe to print and bounded in length.
+
+    A document decides how long this is, not the tool. One real paper in testing
+    carried 398 embedded files and printed all 398 names on a single line. The
+    cap is not cosmetic: this string is attacker-controlled and goes to a
+    terminal.
+    """
+    text = _printable(text)
+    if len(text) <= SAMPLE_LIMIT:
+        return text
+    return text[:SAMPLE_LIMIT].rstrip() + f" … ({len(text) - SAMPLE_LIMIT} more characters)"
+
+
 def _clean_dict(entry: dict) -> dict:
     if "sample" in entry:
-        entry["sample"] = _printable(entry["sample"])
+        entry["sample"] = _sample(entry["sample"])
     return entry
 
 
@@ -65,6 +82,8 @@ def to_json(report: Report, show_content: bool = False) -> str:
     payload = {
         "file": report.path,
         "pages_read": report.pages_read,
+        "picture_pages": report.picture_pages,
+        "short_runs_skipped": report.short_runs,
         "counts": report.counts(),
         "findings": [
             _clean_dict(f.as_dict(show_content)) for f in report.sorted_findings()
@@ -107,10 +126,19 @@ def to_text(report: Report, show_content: bool = False, verbose: bool = False) -
     )
     if report.blindspots:
         lines.append(f"{len(report.blindspots)} place(s) could not be seen into.")
+    if report.picture_pages:
+        # This line is printed on every run that has picture pages, clean ones
+        # included. A document flattened into images produces no findings at all,
+        # and without this the report of one is indistinguishable from the report
+        # of a document that was genuinely read and was genuinely clear.
+        lines.append(
+            f"{report.picture_pages} of {report.pages_read} page(s) are mostly "
+            "picture, and pictures are not read."
+        )
     lines.append("")
 
     if not report.findings:
-        lines.append("Nothing checkable stood out.")
+        lines.append("Found nothing in what could be read.")
         lines.append("")
         lines.append("That is not the same as 'safe to send'. Read what could not be")
         lines.append("seen and what was not checked, below, before treating it as one.")
@@ -131,7 +159,7 @@ def to_text(report: Report, show_content: bool = False, verbose: bool = False) -
                 for chunk in _wrap(finding.detail, 62):
                     lines.append(f"        {chunk}")
             if show_content and finding.sample is not None:
-                lines.append(f"        content: {_printable(finding.sample)}")
+                lines.append(f"        content: {_sample(finding.sample)}")
             lines.append("")
 
     if report.blindspots:
