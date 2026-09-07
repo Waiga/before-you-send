@@ -1,9 +1,9 @@
 """Character widths for the fourteen fonts a PDF is allowed to leave undeclared.
 
 A PDF may omit ``/Widths`` for the standard fourteen fonts, because every reader is
-required to know them. This tool did not, so it estimated instead — and measured on
-887 real published documents, 92% of them had at least one font whose widths had to
-be guessed. Guessed widths feed the box around a run of text, the box feeds the
+required to know them. This tool did not, so it estimated instead — and across a
+220-document sample of real published files, 92% of them had at least one font whose
+widths had to be guessed. Guessed widths feed the box around a run of text, the box feeds the
 fraction of it covered by something, and that fraction is compared against a
 threshold to decide whether a passage was redacted. The tool's most important
 judgement was resting on an estimate almost everywhere.

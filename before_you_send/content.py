@@ -319,7 +319,7 @@ def _painted_boxes(subpaths) -> list:
     one rectangle, a hollow border becomes a solid block of ink over everything
     inside it.
 
-    That is not a corner case. One 175-page government table in a corpus of 887 real
+    That is not a corner case. One 175-page government table in a corpus of 931 real
     documents produced 8,638 covered-text findings this way — 68% of every such
     finding in the whole corpus — and the page it came from is a perfectly ordinary
     Word table with white cells and black gridlines, entirely readable.
@@ -389,7 +389,7 @@ def _font_widths(font) -> tuple:
         if widths is None or first is None:
             # A PDF may leave /Widths out for the standard fourteen fonts, because
             # every reader is required to know them. This one did not, so it fell
-            # back to an average — on 92% of a sample of 887 real published
+            # back to an average — on 92% of a 220-document sample of real published
             # documents. The coverage fraction that decides whether a passage was
             # redacted was resting on that estimate almost everywhere.
             known = widths_for(str(font.get("/BaseFont", "")))
