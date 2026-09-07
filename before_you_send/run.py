@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from before_you_send.checks import DOCUMENT_CHECKS, PAGE_CHECKS
+from before_you_send.checks.visibility import PAGE_IMAGE_SHARE, picture_share
 from before_you_send.content import Box, read_page
 from before_you_send.document import load
 from before_you_send.findings import Report
@@ -51,6 +52,8 @@ def inspect_document(path: str) -> Report:
             )
 
         box = _page_box(page)
+        if picture_share(content, box) >= PAGE_IMAGE_SHARE:
+            report.picture_pages += 1
         for check in PAGE_CHECKS:
             try:
                 check(report, label, content, box)
@@ -70,6 +73,24 @@ def inspect_document(path: str) -> Report:
                 f"the check did not complete ({type(error).__name__}), so the document "
                 "was not examined for it",
             )
+
+    if report.short_runs:
+        report.note_unchecked(
+            "Text runs of one or two characters",
+            f"{report.short_runs} run(s) that short were passed over. A run that "
+            "short cannot carry a name, a number of consequence or a word, and in "
+            "testing on real documents they were almost always a plot marker, a "
+            "rule or a maths glyph rather than anything concealed",
+        )
+
+    if report.picture_pages:
+        report.note_unchecked(
+            "What is inside the pictures",
+            f"{report.picture_pages} of {report.pages_read} page(s) are mostly "
+            "picture. Nothing inside a picture is examined, so on those pages this "
+            "run has very little to say. A document flattened into images will come "
+            "back with nothing found and will not be empty",
+        )
 
     if widths_estimated:
         report.note_unchecked(

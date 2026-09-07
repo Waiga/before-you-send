@@ -26,6 +26,20 @@ PATH_LIKE = re.compile(
     re.VERBOSE,
 )
 
+# A web address with a host in it. Its path is published, not private: a link like
+# "https://www.gov.uk/home/guidance" is not a build path, and calling one "a
+# filesystem path naming a user account" is the kind of wrong that costs the reader's
+# trust in everything else the report says. Addresses are removed before the search.
+#
+# The host has to be non-empty for this to apply, which is exactly what keeps
+# "file:///Users/someone/draft.pdf" — a real leak, and a common one out of a word
+# processor — matching as the path it is.
+WEB_ADDRESS = re.compile(r"\b[a-z][a-z0-9+.\-]*://[^\s/]+\S*", re.IGNORECASE)
+
+
+def _without_web_addresses(value: str) -> str:
+    return WEB_ADDRESS.sub(" ", value)
+
 
 def _info(doc) -> dict:
     try:
@@ -88,7 +102,11 @@ def descriptive_metadata(report, doc) -> None:
 def build_path_in_metadata(report, doc) -> None:
     """A filesystem path left behind in the document properties."""
     info = _info(doc)
-    hits = {key: value for key, value in info.items() if PATH_LIKE.search(value)}
+    hits = {
+        key: value
+        for key, value in info.items()
+        if PATH_LIKE.search(_without_web_addresses(value))
+    }
     if not hits:
         return
     report.add(

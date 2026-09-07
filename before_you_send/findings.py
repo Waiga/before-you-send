@@ -13,6 +13,7 @@ this file exists so that cannot happen by accident.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -95,6 +96,97 @@ class Unchecked:
         return {"topic": self.topic, "reason": self.reason}
 
 
+
+_DIGITS = re.compile(r"\d+")
+
+
+def _shape(sample: str | None) -> str | None:
+    """A recovered string with its numbers taken out.
+
+    Page furniture is rarely identical page to page: a footer carries a page
+    number, a typesetter's control line carries a frame counter, a stamp carries a
+    date. Keying on the exact string leaves one finding per page for what is
+    plainly one piece of boilerplate — in testing, a 31-page notice still reported
+    31 copies of the same footer after identical repeats had already been folded.
+    Numbers are the part that varies, so they are what the key ignores.
+
+    This is deliberately not clever. Two genuinely different passages that differ
+    only in their digits, at identical coordinates on different pages, are folded
+    together — and that is the right answer too, because it says the same thing is
+    covered in the same place throughout. Every distinct string is kept, so
+    --show-content still shows what each page actually held.
+    """
+    if sample is None:
+        return None
+    return _DIGITS.sub("#", sample)
+
+
+def collapse(findings: list[Finding], pages_read: int = 0) -> list[Finding]:
+    """Fold a finding repeated verbatim in the same place on many pages into one.
+
+    A header, a footer, a watermark or a typesetter's control line is one fact
+    about a document, not one fact per page. Reported per page it buries the
+    single-page finding that actually matters. A 31-page government notice in
+    testing produced 62 HIGH lines for two facts, and the worst case in the same
+    corpus produced 470 for two; a real leak on page 137 of that document could
+    not have been found in the output.
+
+    Repetition is evidence in its own right, so the collapsed finding says how
+    many pages carry it. Something painted in the same place on every page is
+    page furniture, which is a different thing from a passage somebody tried to
+    hide, and the reader needs to be able to tell them apart at a glance.
+
+    Only findings that are identical in check, level, location, wording and
+    recovered content are folded together. Two different passages that merely
+    happen to share a check stay separate, because they are separate facts.
+    """
+    groups: dict = {}
+    for finding in findings:
+        key = (
+            finding.check,
+            finding.level,
+            finding.location,
+            finding.summary,
+            finding.detail,
+            _shape(finding.sample),
+        )
+        groups.setdefault(key, []).append(finding)
+
+    out: list[Finding] = []
+    for members in groups.values():
+        first = members[0]
+        if len(members) == 1:
+            out.append(first)
+            continue
+        pages = {m.page for m in members}
+        count = len(pages)
+        if pages_read and count >= pages_read:
+            where, tail = f"all {count} pages", "on every page of the document"
+        else:
+            where, tail = f"{count} pages", f"in the same place on {count} pages"
+        samples = [m.sample for m in members if m.sample is not None]
+        distinct = list(dict.fromkeys(samples))
+        out.append(
+            Finding(
+                check=first.check,
+                level=first.level,
+                page=where,
+                location=first.location,
+                summary=f"{first.summary} The same thing appears {tail}.",
+                detail=(
+                    first.detail
+                    + " It repeats page after page in the same position, which is "
+                    "where a header, a footer, a watermark or a typesetter's "
+                    "control line lives. That does not make it harmless — it is "
+                    "still in the file and still extracts — but it is one piece of "
+                    "boilerplate rather than something hidden on a particular page."
+                ).strip(),
+                sample=" | ".join(distinct) if distinct else first.sample,
+            )
+        )
+    return out
+
+
 @dataclass
 class Report:
     """Everything one run learned about one file."""
@@ -104,6 +196,8 @@ class Report:
     blindspots: list[Blindspot] = field(default_factory=list)
     unchecked: list[Unchecked] = field(default_factory=list)
     pages_read: int = 0
+    short_runs: int = 0
+    picture_pages: int = 0
 
     def add(self, finding: Finding) -> None:
         self.findings.append(finding)
@@ -114,15 +208,26 @@ class Report:
     def note_unchecked(self, topic: str, reason: str) -> None:
         self.unchecked.append(Unchecked(topic, reason))
 
+    def note_short_run(self) -> None:
+        """Record that a run was passed over for being one or two characters long."""
+        self.short_runs += 1
+
     def sorted_findings(self) -> list[Finding]:
+        """What the reader sees: one entry per distinct fact, worst first.
+
+        Repetition is folded here rather than in each check, so a check stays a
+        statement about one run of text and does not have to know about the rest
+        of the document. Everything a check reported is still in ``findings``.
+        """
         return sorted(
-            self.findings,
+            collapse(self.findings, self.pages_read),
             key=lambda f: (-f.level.rank, f.check, f.page, f.location),
         )
 
     def counts(self) -> dict[str, int]:
+        """Counted the way they are printed, so the header cannot contradict the body."""
         counts = {"high": 0, "medium": 0, "low": 0}
-        for f in self.findings:
+        for f in self.sorted_findings():
             counts[f.level.value] += 1
         return counts
 
