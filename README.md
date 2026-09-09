@@ -202,6 +202,14 @@ scanned FOIA releases from the FBI's reading room. Six producers, which matters 
 than six sources — a Word document, a LaTeX paper and an InDesign report fail in
 different ways.
 
+**How this was measured.** Which 931 documents, where each came from, and — the
+part that matters most in this section — which of four measurement passes each
+figure below belongs to: [`docs/corpus-manifest.md`](docs/corpus-manifest.md),
+with the document list in [`docs/corpus/documents.tsv`](docs/corpus/documents.tsv).
+The numbers here are not all from the same run, and the manifest says which is
+which. It also records what was not kept, including 567 source URLs that a
+collection script overwrote.
+
 It found thirteen classes of defect. The first pass produced **4,280 findings across
 450 documents, 3,126 of them HIGH**, and almost none of them worth reading.
 
