@@ -320,8 +320,9 @@ def _painted_boxes(subpaths) -> list:
     inside it.
 
     That is not a corner case. One 175-page government table in a corpus of 931 real
-    documents produced 8,638 covered-text findings this way — 68% of every such
-    finding in the whole corpus — and the page it came from is a perfectly ordinary
+    documents produced 8,638 covered-text findings this way — 96% of every
+    covered-text finding in that corpus, and 67% of every finding of any kind — and
+    the page it came from is a perfectly ordinary
     Word table with white cells and black gridlines, entirely readable.
 
     So: a single piece keeps its box. Two pieces where one encloses the other paint

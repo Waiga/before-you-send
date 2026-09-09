@@ -229,8 +229,9 @@ benign explanation, and 5 are serious. Every fixture in the suite used a classic
 table, so no test could have seen it.
 
 **A border was being read as a block.** One 175-page government table produced
-**8,638** covered-text findings, 68% of every such finding in the corpus. Rendered,
-the page is an ordinary Word table: white cells, black gridlines, entirely readable.
+**8,638** covered-text findings, 96% of every covered-text finding across the 931
+documents and 67% of every finding of any kind. Rendered, the page is an ordinary
+Word table: white cells, black gridlines, entirely readable.
 A word processor draws a cell edge as an outer outline and an inner one in a single
 path; measured as one rectangle, a hollow frame becomes a solid block of ink over
 everything inside it. That document now reports 4 findings, all true.
@@ -241,14 +242,15 @@ bytes were characters, a run measures about twice as wide as it is — and that 
 is the denominator of the coverage fraction that decides whether a passage was
 redacted. Twice too wide halves the coverage, drops it under the threshold, and the
 finding never appears. On the Word and InDesign slice, documents relying on estimated
-widths fell from 78% to 47%.
+widths fell from 78% to 47%. That was measured on a 32-document sample of UK
+government and WHO PDFs, first page only.
 
 **One fact was being reported once per page.** The Federal Register prints a
 typesetter's control line and an operator's account name in white in the margin of
 every page. Both are real, and one of them names a person. Reported per page they
-came to 62 HIGH findings on a 31-page notice and 470 on the longest document in the
-corpus, which is the same as reporting nothing: a genuine single-page leak could not
-have been found in that. It now reports 3, and the two HIGH ones are true.
+came to 62 HIGH findings on a 31-page notice and 232 on a 116-page one, which is the
+same as reporting nothing: a genuine single-page leak could not have been found in
+that. It now reports 3, and the two HIGH ones are true.
 
 ### What that does and does not establish
 
@@ -328,8 +330,8 @@ attacking the tool after the first suite was already passing. Most of those
 defects were false positives on entirely ordinary documents, which is the failure
 worth guarding hardest against.
 
-`tests/test_corpus_defects.py` holds one test per defect found afterwards, by
-running the finished tool over 931 real published PDFs it had never seen. Every one
+`tests/test_corpus_defects.py` holds the tests for the thirteen defects found
+afterwards, by running the finished tool over 931 real published PDFs it had never seen. Every one
 of them names the document shape that produced it, and every one was checked to fail
 without its fix — a test that passes either way is not a test.
 

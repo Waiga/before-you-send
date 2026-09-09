@@ -50,7 +50,7 @@ def findings_for(path: str, check: str) -> list:
 # The Federal Register prints a typesetter's control line and an operator's account
 # name in white in the margin of every page. Both are real: they extract, and one of
 # them names a person. Reported once per page they came to 62 HIGH findings on a
-# 31-page notice, and 470 on the longest document in the corpus. A genuine
+# 31-page notice, and 232 on a 116-page one. A genuine
 # single-page leak could not have been found in that.
 
 
@@ -553,8 +553,8 @@ def test_a_composite_font_with_an_encoding_we_do_not_read_keeps_estimating(build
 def test_a_table_cell_border_does_not_count_as_ink_over_its_contents(build):
     """The largest single false positive in the corpus, by a wide margin.
 
-    A 175-page government table produced 8,638 covered-text findings, 68% of every
-    such finding across 931 documents, and the page is an ordinary Word table with
+    A 175-page government table produced 8,638 covered-text findings, 96% of every
+    covered-text finding across 931 documents, and the page is an ordinary Word table with
     white cells and black gridlines that reads perfectly well. Every "opaque shape"
     was a cell border: an outer outline and an inner one in one path, measured as
     one rectangle and therefore as a solid block of ink over the cell.

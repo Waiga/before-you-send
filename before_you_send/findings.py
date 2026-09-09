@@ -128,8 +128,8 @@ def collapse(findings: list[Finding], pages_read: int = 0) -> list[Finding]:
     about a document, not one fact per page. Reported per page it buries the
     single-page finding that actually matters. A 31-page government notice in
     testing produced 62 HIGH lines for two facts, and the worst case in the same
-    corpus produced 470 for two; a real leak on page 137 of that document could
-    not have been found in the output.
+    corpus produced 232 for two; a real leak on a single page of that document
+    could not have been found in the output.
 
     Repetition is evidence in its own right, so the collapsed finding says how
     many pages carry it. Something painted in the same place on every page is
