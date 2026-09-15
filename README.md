@@ -45,7 +45,7 @@ None of this is exotic. It is the ordinary result of treating a PDF as a picture
 of a document when it is actually a container.
 
 This tool does not tell you a file is safe to send. It tells you what it found,
-where it found it, and — separately, and always — where it could not see.
+where it found it and, separately and always, where it could not see.
 
 One fact is reported once. Something painted in the same place on every page is a
 header, a footer or a watermark, and printing it once per page buries the finding on
@@ -110,7 +110,7 @@ before-you-send examples/careful-letter.pdf
 | `document_author` | medium | A named author in the document properties. |
 | `build_path_in_metadata` | medium | A filesystem path left in the properties, naming a user or a client folder. |
 | `xmp_metadata` | medium / low | A second author record, which editing tools often forget to update. |
-| `descriptive_metadata` | low | Title, subject or keywords — frequently the original filename. |
+| `descriptive_metadata` | low | Title, subject or keywords. Frequently the original filename. |
 | `encryption_without_a_password` | low | Restrictions the file asks for but cannot enforce. |
 | `scanned_text_layer` | low | Invisible text under a page-sized image: the searchable layer of a scan, reported so you know it extracts. |
 
@@ -143,7 +143,7 @@ it are located and measured exactly and their text is not guessed at. Composite 
 using an encoding other than Identity keep having their widths estimated, for the
 same reason: a width read against the wrong glyph is worse than an admitted estimate.
 
-When an image is painted over text, the tool says so as a **blind spot** — a
+When an image is painted over text, the tool says so as a **blind spot**: a
 located place it can prove something is drawn at and cannot see under. The same
 goes for a shape whose colour the file names indirectly, through a pattern or a
 spot colour, where whether it conceals anything cannot be decided from the
@@ -179,9 +179,9 @@ usable on real documents:
   reading only its alpha value reports every highlight in a document.
 
 The order is a fact from the file. The verdict is not purely a fact: it is gated
-by a coverage threshold, an opacity threshold, a colour tolerance, and — for any
-font that does not declare its character widths, which includes Helvetica and
-Times — an estimate of how wide a line of text really is. Where that estimate is
+by a coverage threshold, an opacity threshold, a colour tolerance and, for any
+font that does not declare its character widths (which includes Helvetica and
+Times), an estimate of how wide a line of text really is. Where that estimate is
 load-bearing the report says "about", and it is listed under what was not checked.
 
 The test suite holds every innocent twin as a matched pair against the case it
@@ -199,13 +199,13 @@ every test it wrote for itself and still be useless on the first real file it me
 so it was pointed at 931 published PDFs it had nothing to do with: the US Federal
 Register, arXiv, gov.uk, the World Health Organization, US court filings, and
 scanned FOIA releases from the FBI's reading room. Six producers, which matters more
-than six sources — a Word document, a LaTeX paper and an InDesign report fail in
+than six sources: a Word document, a LaTeX paper and an InDesign report fail in
 different ways.
 
-**How this was measured.** Which 931 documents, where each came from, and — the
-part that matters most in this section — which of four measurement passes each
-figure below belongs to: [`docs/corpus-manifest.md`](docs/corpus-manifest.md),
-with the document list in [`docs/corpus/documents.tsv`](docs/corpus/documents.tsv).
+**How this was measured.** Which 931 documents, where each came from and (the
+part that matters most in this section) which of four measurement passes each
+figure below belongs to: [`docs/corpus-manifest.md`](https://github.com/Waiga/before-you-send/blob/main/docs/corpus-manifest.md),
+with the document list in [`docs/corpus/documents.tsv`](https://github.com/Waiga/before-you-send/blob/main/docs/corpus/documents.tsv).
 The numbers here are not all from the same run, and the manifest says which is
 which. It also records what was not kept, including 567 source URLs that a
 collection script overwrote.
@@ -227,8 +227,8 @@ Four are worth naming, because none of them could have been found any other way:
 
 **The check most likely to hide a real leak never ran.** `earlier_versions_retained`
 began by asking the parsed trailer for `/Prev`. A parser only surfaces that key for a
-classic cross-reference table, and every modern PDF — Word, Acrobat, InDesign,
-Chrome, every linearized government file — uses a cross-reference stream instead, so
+classic cross-reference table, and every modern PDF (Word, Acrobat, InDesign,
+Chrome, every linearized government file) uses a cross-reference stream instead, so
 the check returned on its first line and never reached the byte walk written for
 exactly this question. Measured over the 887 documents collected at that point, it
 was silent on **256 of them**. Most of those are
@@ -246,7 +246,7 @@ everything inside it. That document now reports 4 findings, all true.
 
 **Composite fonts were being guessed at.** A Type0 font addresses glyphs by number,
 two bytes at a time, and keeps its widths on a descendant font. Read as though the
-bytes were characters, a run measures about twice as wide as it is — and that width
+bytes were characters, a run measures about twice as wide as it is, and that width
 is the denominator of the coverage fraction that decides whether a passage was
 redacted. Twice too wide halves the coverage, drops it under the threshold, and the
 finding never appears. On the Word and InDesign slice, documents relying on estimated
@@ -310,8 +310,8 @@ it comprehensively, and [mat2](https://0xacab.org/jvoisin/mat2) removes it acros
 many formats. Both are mature, free, and better at that one job than this is.
 
 For **covered and invisible text**, the tools that exist are mostly web services
-you upload the document to — which is the wrong shape for a file you are worried
-about — or paid consistency-checking add-ins sold to firms rather than people.
+you upload the document to (which is the wrong shape for a file you are worried
+about) or paid consistency-checking add-ins sold to firms rather than people.
 [pdfalyzer](https://pypi.org/project/pdfalyzer/) is free and local but aimed at
 malware forensics, and it is GPL-licensed.
 
@@ -341,7 +341,7 @@ worth guarding hardest against.
 `tests/test_corpus_defects.py` holds the tests for the thirteen defects found
 afterwards, by running the finished tool over 931 real published PDFs it had never seen. Every one
 of them names the document shape that produced it, and every one was checked to fail
-without its fix — a test that passes either way is not a test.
+without its fix. A test that passes either way is not a test.
 
 ## Licence
 
