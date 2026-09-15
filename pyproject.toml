@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "before-you-send"
-version = "0.2.0"
+version = "0.2.1"
 description = "Reads a PDF and reports what is still inside it that you may not mean to send. Runs entirely on your machine."
 readme = "README.md"
 requires-python = ">=3.9"
