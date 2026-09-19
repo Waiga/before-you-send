@@ -5,7 +5,7 @@ Reads a PDF and tells you what is still inside it that you may not mean to send.
 ```
 $ before-you-send letter.pdf
 
-Before You Send — letter.pdf
+Before You Send: letter.pdf
 ========================================================================
 Read 1 page(s). 10 finding(s): 5 high, 4 medium, 1 low.
 1 place(s) could not be seen into.
@@ -13,19 +13,21 @@ Read 1 page(s). 10 finding(s): 5 high, 4 medium, 1 low.
 HIGH
 ------------------------------------------------------------------------
 HIGH    page 1  (72, 657)-(257, 669)  [covered_text]
-        34 characters of text have an opaque shape painted over them,
-        covering 100% of the run.
+        34 characters of text have an opaque shape painted over them, covering 100% of the run.
 
 HIGH    document  file structure  [earlier_versions_retained]
-        The file contains 1 earlier version(s) of itself, kept in full
-        alongside the current one.
+        The file contains 1 earlier version(s) of itself, kept in full alongside the current one.
 
 HIGH    document  attachments  [embedded_files]
         1 whole file(s) are attached inside this document.
 
 HIGH    page 1  (72, 627)-(277, 639)  [invisible_text]
-        40 characters are set to render mode 3, which draws nothing on
-        the page.
+        40 characters are set to render mode 3, which draws nothing on the page.
+
+HIGH    page 1  (72, 607)-(190, 619)  [text_matching_background]
+        21 characters are drawn in the same colour as the page itself, so nothing appears there.
+
+[4 medium and 1 low finding omitted here]
 
 COULD NOT SEE
 ------------------------------------------------------------------------
@@ -33,6 +35,8 @@ COULD NOT SEE
       an image was painted over 1 run(s) of text. Whether the image
       hides that text, or is simply drawn across it, cannot be decided
       without looking at the picture, which this tool does not do.
+
+[the NOT CHECKED section, printed on every run, omitted here]
 ```
 
 A black box drawn over a name does not remove the name. The characters are still
@@ -55,7 +59,9 @@ nothing found and is not empty.
 
 ## Install
 
-Python 3.9 or newer. The only dependency is `pypdf`.
+Python 3.9 or newer. It depends on `pypdf`, and on the `cryptography` package
+that pypdf needs to open a file encrypted with AES. Both arrive with the install;
+there is nothing to add by hand.
 
 ```bash
 pip install before-you-send
@@ -79,7 +85,8 @@ before-you-send letter.pdf --format json    # for scripts
 ```
 
 Exit codes, for a pipeline: `0` nothing at or above the threshold, `1` something
-found, `2` the file could not be read. The threshold is `--fail-on high|medium|low|never`
+found, `2` the file could not be read, `3` this tool is missing a package it needs,
+so it read nothing and the file itself was never called into question. The threshold is `--fail-on high|medium|low|never`
 and defaults to `medium`.
 
 Try it on the examples, which the repository generates rather than stores:
@@ -280,6 +287,56 @@ not proof. It is one independent check, on a population where concealment is rar
 Concretely: this has not been validated against a corpus of documents where people
 actually attempted redaction and got it wrong. If you have one, that is the most
 useful thing you could point this at.
+
+### A second corpus, and a different question
+
+Everything above is about false positives, over the 931 documents of 7 September
+2026. This is a separate measurement over a separate corpus, and none of its
+numbers belong to the section above.
+
+On **19 September 2026** a new corpus was collected from four public APIs: 850
+documents attempted, **838 read**, made up of 300 US Federal Register notices, 250
+gov.uk publications, 147 WHO reports and 141 arXiv papers, 919 MB in all. The
+question was not how often the tool cries wolf. It was how much of its own past a
+published PDF actually keeps, asked as four questions, each sharper than the last:
+
+1. does the file chain to an earlier cross-reference section at all
+2. does `earlier_versions_retained` call that a HIGH finding
+3. does any object actually exist in two versions inside the file
+4. does any **page** point at a different content stream than it used to
+
+The four answers are far apart, and only the last one means what a reader tends to
+assume the first one means. **The tool answers the first two.** It does not separate
+structural history from genuinely replaced page content, and nothing in this
+repository should be read as claiming it does. Questions 3 and 4 are answered by
+[`scripts/measure_history.py`](https://github.com/Waiga/before-you-send/blob/main/scripts/measure_history.py),
+a second implementation that walks the bytes itself and imports nothing from this
+package, precisely so the two can be checked against each other.
+
+To reproduce it, rebuild the corpus and run one command:
+
+```bash
+python scripts/collect_urls.py fedreg urls_fedreg.tsv   # and govuk, who, arxiv
+python scripts/download.py corpus/
+python scripts/measure_history.py corpus/
+```
+
+The documents themselves are not in this repository and will not be: they are other
+people's copyrighted material and close to a gigabyte of it. What is committed is
+[`docs/corpus/history-corpus-2026-09-19.tsv`](https://github.com/Waiga/before-you-send/blob/main/docs/corpus/history-corpus-2026-09-19.tsv),
+850 rows carrying the source, filename, size, SHA-256 and download URL of every one.
+Unlike the 7 September manifest, every row here has its URL.
+
+`measure_history.py` is committed exactly as it was run, reformatting included,
+because a tidied copy is no longer the program that produced the numbers. That is
+also why its `obj_dict` docstring records a bug in the measuring code rather than
+quietly removing it: a fixed length read window ran off the end of short objects
+into whatever was stored next, and a catalogue and two fonts were counted as
+replaced pages until it was caught.
+
+The same caution as above applies, and harder. These are published documents, and a
+population where nobody was trying to conceal anything tells you very little about
+the case where somebody was.
 
 ## Privacy
 

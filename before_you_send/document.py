@@ -22,6 +22,23 @@ class UnreadableDocument(Exception):
     """The file could not be opened well enough to say anything honest about it."""
 
 
+class MissingDependency(UnreadableDocument):
+    """The file is very probably fine. This installation of the tool is not.
+
+    A PDF encrypted with AES needs the ``cryptography`` package to open, and
+    publishers encrypt with an empty user password as a matter of routine: the
+    document opens for anyone, and merely asks readers not to copy or print it.
+    Without that package the parser raises, and everything downstream of the raise
+    used to tell the sender their document was truncated or damaged.
+
+    That is a false accusation, and the worst kind: it sends somebody to look for
+    a fault in a file that does not have one, while the real fault sits in the
+    tool's own dependency list. It is kept apart from UnreadableDocument for that
+    reason, and subclasses it so that any caller which only knows the parent still
+    fails closed rather than treating the run as clean.
+    """
+
+
 @dataclass
 class LoadedDocument:
     """One PDF, opened once, with the raw bytes kept for whole-file questions.
@@ -64,9 +81,30 @@ def _describe_open_failure(path: Path, error: Exception) -> str:
     )
 
 
+def _describe_missing_dependency(error: Exception) -> str:
+    """Say that the tool is short of a package, and never that the file is bad.
+
+    pypdf states its own requirement precisely ("cryptography>=3.1 is required for
+    AES algorithm"), so that sentence is passed through rather than paraphrased.
+    Guessing at which package is missing would be the same class of error as
+    guessing that the file is damaged.
+    """
+    requirement = str(error).strip() or "a package that was not named"
+    return (
+        "Your file is not the problem. This tool needs a package that is not "
+        f"installed, and could not open the document without it: {requirement}.\n\n"
+        "Nothing here says anything is wrong with the document. Install what is "
+        "missing and run this again:\n\n"
+        "    pip install --upgrade before-you-send\n\n"
+        "or add the package on its own:\n\n"
+        "    pip install cryptography"
+    )
+
+
 def load(path_text: str) -> LoadedDocument:
     """Open a PDF, or raise UnreadableDocument with a reason a person can act on."""
     from pypdf import PdfReader
+    from pypdf.errors import DependencyError
 
     path = Path(path_text)
 
@@ -96,6 +134,8 @@ def load(path_text: str) -> LoadedDocument:
 
     try:
         reader = PdfReader(io.BytesIO(raw))
+    except DependencyError as error:
+        raise MissingDependency(_describe_missing_dependency(error))
     except Exception as error:
         raise UnreadableDocument(_describe_open_failure(path, error))
 
@@ -103,6 +143,8 @@ def load(path_text: str) -> LoadedDocument:
     if getattr(reader, "is_encrypted", False):
         try:
             opened = reader.decrypt("")
+        except DependencyError as error:
+            raise MissingDependency(_describe_missing_dependency(error))
         except Exception:
             opened = 0
         if not opened:
@@ -114,6 +156,8 @@ def load(path_text: str) -> LoadedDocument:
 
     try:
         pages = list(reader.pages)
+    except DependencyError as error:
+        raise MissingDependency(_describe_missing_dependency(error))
     except Exception as error:
         raise UnreadableDocument(_describe_open_failure(path, error))
 

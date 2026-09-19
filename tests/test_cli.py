@@ -12,7 +12,13 @@ import json
 
 import pytest
 
-from before_you_send.cli import EXIT_CLEAN, EXIT_FINDINGS, EXIT_UNREADABLE, main
+from before_you_send.cli import (
+    EXIT_CLEAN,
+    EXIT_FINDINGS,
+    EXIT_TOOL_INCOMPLETE,
+    EXIT_UNREADABLE,
+    main,
+)
 
 SECRET = "Account 8891 0042 3317"
 
@@ -111,6 +117,68 @@ def test_a_refusal_says_that_nothing_examined_is_not_clean(tmp_path, capsys):
     path.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 400)
     main([str(path)])
     assert "That is not a clean result" in capsys.readouterr().err
+
+
+# --- our fault, said as ours ------------------------------------------------
+
+
+def _parser_missing_its_library(monkeypatch):
+    """Make the parser raise for a missing package, whatever is installed here."""
+    import pypdf
+    from pypdf.errors import DependencyError
+
+    def refuse(*args, **kwargs):
+        raise DependencyError("cryptography>=3.1 is required for AES algorithm")
+
+    monkeypatch.setattr(pypdf, "PdfReader", refuse)
+
+
+def test_a_missing_library_gets_its_own_exit_code(clean_document, monkeypatch, capsys):
+    """Exit 2 sends an operator to look at their document. Here the document is fine.
+
+    A pipeline should not have to guess which of the two it got, so this is a code
+    of its own rather than the refusal code reused.
+    """
+    _parser_missing_its_library(monkeypatch)
+    assert main([clean_document]) == EXIT_TOOL_INCOMPLETE
+    assert EXIT_TOOL_INCOMPLETE not in (EXIT_CLEAN, EXIT_FINDINGS, EXIT_UNREADABLE)
+
+
+def test_a_missing_library_blames_the_tool_and_not_the_file(
+    clean_document, monkeypatch, capsys
+):
+    _parser_missing_its_library(monkeypatch)
+    main([clean_document])
+    err = capsys.readouterr().err
+
+    assert "This tool is missing something it needs" in err
+    assert "cryptography" in err
+    assert "pip install" in err
+    assert "truncated" not in err
+    assert "damaged" not in err
+
+
+def test_a_missing_library_still_refuses_to_look_clean(
+    clean_document, monkeypatch, capsys
+):
+    """The posture that must survive the fix: nothing examined is not a clean result."""
+    _parser_missing_its_library(monkeypatch)
+    code = main([clean_document])
+    err = capsys.readouterr().err
+
+    assert code != EXIT_CLEAN
+    assert "Nothing was examined, so nothing is reported" in err
+    assert "That is not a clean result" in err
+
+
+def test_an_encrypted_document_that_opens_for_anyone_is_reported_not_refused(
+    aes_encrypted_empty_password, capsys
+):
+    """The real file, end to end, through the command line."""
+    assert main([aes_encrypted_empty_password, "--fail-on", "low"]) == EXIT_FINDINGS
+    out = capsys.readouterr().out
+    assert "encryption_without_a_password" in out
+    assert "Cannot read this file" not in out
 
 
 # --- honesty in the output --------------------------------------------------

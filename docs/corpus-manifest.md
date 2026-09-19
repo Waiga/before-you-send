@@ -1,8 +1,16 @@
 # Corpus manifest
 
 Every number in the README's "Against real documents" section was produced
-against the material described here. This document exists so that a stranger can
-obtain the same material and check.
+against the material described here, **with one exception**: the subsection "A
+second corpus, and a different question" is a later and entirely separate
+measurement, over 838 documents collected on 19 September 2026. Nothing in this
+manifest describes those documents. They have their own list at
+[`corpus/history-corpus-2026-09-19.tsv`](corpus/history-corpus-2026-09-19.tsv),
+and unlike this corpus every row of it carries a working source URL. The program
+that measured them is committed at `scripts/measure_history.py`, which this
+corpus never had.
+
+This document exists so that a stranger can obtain the same material and check.
 
 It matters more here than elsewhere in this repository, because that section is
 **not one measurement**. It is four passes over four different document counts,
