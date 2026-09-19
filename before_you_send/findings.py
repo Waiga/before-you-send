@@ -177,8 +177,8 @@ def collapse(findings: list[Finding], pages_read: int = 0) -> list[Finding]:
                     first.detail
                     + " It repeats page after page in the same position, which is "
                     "where a header, a footer, a watermark or a typesetter's "
-                    "control line lives. That does not make it harmless — it is "
-                    "still in the file and still extracts — but it is one piece of "
+                    "control line lives. That does not make it harmless. It is "
+                    "still in the file and it still extracts, but it is one piece of "
                     "boilerplate rather than something hidden on a particular page."
                 ).strip(),
                 sample=" | ".join(distinct) if distinct else first.sample,

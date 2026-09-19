@@ -6,7 +6,7 @@ import argparse
 import sys
 
 from before_you_send import __version__
-from before_you_send.document import UnreadableDocument
+from before_you_send.document import MissingDependency, UnreadableDocument
 from before_you_send.findings import Level, Report
 from before_you_send.report import to_json, to_text
 from before_you_send.run import inspect_document
@@ -14,6 +14,14 @@ from before_you_send.run import inspect_document
 EXIT_CLEAN = 0
 EXIT_FINDINGS = 1
 EXIT_UNREADABLE = 2
+# A fourth code, because "this file is bad" and "this tool is incomplete" are not
+# the same event and a pipeline should not have to guess which one it got. Exit 2
+# sends an operator to look at their document. When a package is missing the
+# document has not been called into question at all, and sending somebody to
+# examine a file that was never examined is the defect this code exists to end.
+# Nothing that was correct before regresses: anything treating non-zero as "do not
+# send" still holds, and a check for exactly 2 now correctly declines to match.
+EXIT_TOOL_INCOMPLETE = 3
 
 THRESHOLDS = {"high": Level.HIGH, "medium": Level.MEDIUM, "low": Level.LOW}
 
@@ -87,6 +95,15 @@ def main(argv: list | None = None) -> int:
 
     try:
         report = inspect_document(args.path)
+    except MissingDependency as error:
+        # Checked before UnreadableDocument, which it subclasses.
+        print(f"This tool is missing something it needs.\n\n{error}", file=sys.stderr)
+        print(
+            "\nNothing was examined, so nothing is reported. That is not a clean "
+            "result.",
+            file=sys.stderr,
+        )
+        return EXIT_TOOL_INCOMPLETE
     except UnreadableDocument as error:
         print(f"Cannot read this file.\n\n{error}", file=sys.stderr)
         print(

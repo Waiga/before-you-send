@@ -605,3 +605,104 @@ def test_the_reported_version_matches_the_installed_package():
     from before_you_send import __version__
 
     assert __version__ == version("before-you-send")
+
+
+# --- a library we never declared --------------------------------------------
+#
+# Found on the fifth corpus, 838 published PDFs collected on 19 September 2026: 15
+# of 250 gov.uk documents could not be opened at all. Every one of them was fine.
+# pypdf needs the cryptography package to read a PDF encrypted with AES, the
+# package was not in this project's dependencies, and the parser raised
+# DependencyError. That raise landed in the same branch as a half written file, so
+# the tool told the sender their document was most likely truncated or damaged.
+#
+# A publisher encrypting with an empty user password is ordinary practice: the
+# document opens for anybody and merely records a request not to copy or print it.
+# The tool already had a check written for precisely that shape,
+# encryption_without_a_password, and could not reach it.
+
+
+def test_an_aes_document_that_opens_without_a_password_is_read(
+    aes_encrypted_empty_password,
+):
+    """The whole point: the file was always fine, and is now read as such.
+
+    This one fails before the fix only where the fix was needed, which is a machine
+    that installed the tool and got bare pypdf. That is the shipped condition it
+    was reported under, and after this release it is no machine at all, so the
+    monkeypatched test below holds the same branch down everywhere.
+    """
+    report = inspect_document(aes_encrypted_empty_password)
+
+    assert report.pages_read == 1
+    checks = {f.check for f in report.findings}
+    # The check that exists for exactly this document, finally reachable.
+    assert "encryption_without_a_password" in checks
+    # And the page was genuinely parsed, not merely opened.
+    assert "covered_text" in checks
+
+
+def test_the_restriction_finding_stays_low_and_says_why(aes_encrypted_empty_password):
+    """Restrictions a reader can ignore are a statement of intent, not a control."""
+    hits = findings_for(aes_encrypted_empty_password, "encryption_without_a_password")
+
+    assert len(hits) == 1
+    assert hits[0].level is Level.LOW
+    assert "no password" in hits[0].summary
+
+
+def test_a_missing_library_is_never_reported_as_a_damaged_file(
+    clean_document, monkeypatch
+):
+    """The defect itself, held down independently of what is installed.
+
+    The test above only fails on a machine without cryptography, which after this
+    release is no machine at all. This one makes the parser raise the same error
+    whatever is installed, so the branch that produced the false accusation stays
+    tested for good.
+    """
+    import pypdf
+    from pypdf.errors import DependencyError
+
+    from before_you_send.document import MissingDependency, load
+
+    def refuse(*args, **kwargs):
+        raise DependencyError("cryptography>=3.1 is required for AES algorithm")
+
+    monkeypatch.setattr(pypdf, "PdfReader", refuse)
+
+    with pytest.raises(MissingDependency) as caught:
+        load(clean_document)
+
+    message = str(caught.value)
+    # It names what is missing and how to get it.
+    assert "cryptography" in message
+    assert "pip install" in message
+    # And it does not accuse the document of anything.
+    assert "truncated" not in message
+    assert "damaged" not in message
+
+
+def test_the_new_refusal_is_a_kind_of_the_old_one(clean_document, monkeypatch):
+    """Anything catching only UnreadableDocument must keep refusing, not pass.
+
+    Separating the two cases is worth nothing if it quietly opens a path where a
+    caller written against the old class sees no exception and calls the run clean.
+    MissingDependency subclasses it so that cannot happen, and the subclassing is
+    asserted here rather than left as a property of the source somebody might
+    reasonably tidy away.
+    """
+    import pypdf
+    from pypdf.errors import DependencyError
+
+    from before_you_send.document import MissingDependency, UnreadableDocument, load
+
+    assert issubclass(MissingDependency, UnreadableDocument)
+
+    def refuse(*args, **kwargs):
+        raise DependencyError("cryptography>=3.1 is required for AES algorithm")
+
+    monkeypatch.setattr(pypdf, "PdfReader", refuse)
+
+    with pytest.raises(UnreadableDocument):
+        load(clean_document)

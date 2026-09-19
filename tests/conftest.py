@@ -308,6 +308,43 @@ def reviewer_comments(write):
     )
 
 
+# --- encrypted, and open to anybody ----------------------------------------
+
+
+@pytest.fixture
+def aes_encrypted_empty_password(tmp_path):
+    """A PDF encrypted with AES-256 that opens for everyone, with no password.
+
+    The one fixture here not assembled from literal bytes, and it cannot be: AES-256
+    is AES-256, and writing one by hand would mean implementing the cipher in this
+    file. It is still generated rather than committed, so no binary enters the
+    repository, and every input to it is written above in plain sight.
+
+    The shape is routine rather than exotic. A publisher encrypts to record a
+    request that readers not copy or print, sets no user password so the document
+    opens for anybody, and 15 of 250 gov.uk documents in one measured corpus were
+    exactly this. Reading one needs the cryptography package, which the tool did not
+    depend on before 0.3.0. It told the sender the file was truncated or damaged.
+    """
+    import io
+
+    from pypdf import PdfReader, PdfWriter
+
+    plain = P.one_page(P.text(SECRET, 72, 680) + P.fill_rect(70, 674, 220, 16))
+    writer = PdfWriter(clone_from=PdfReader(io.BytesIO(plain)))
+    # An owner password and no user password: restrictions asked for, and a
+    # document that opens without being asked for anything.
+    writer.encrypt(
+        user_password="", owner_password="not the empty string", algorithm="AES-256"
+    )
+    buffer = io.BytesIO()
+    writer.write(buffer)
+
+    path = tmp_path / "aes_encrypted_empty_password.pdf"
+    path.write_bytes(buffer.getvalue())
+    return str(path)
+
+
 # --- the control -----------------------------------------------------------
 
 

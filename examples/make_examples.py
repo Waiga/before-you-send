@@ -37,7 +37,7 @@ def leaky_letter() -> bytes:
         # white text on the white page
         + P.colored_text("Reserve figure 58,000", 72, 610, (1, 1, 1))
         # parked off the edge of the page, out of sight
-        + P.colored_text("DRAFT - do not circulate", 900, 590, (0, 0, 0))
+        + P.colored_text("DRAFT: do not circulate", 900, 590, (0, 0, 0))
         # an image over a line of text: the tool must say it cannot see under this
         + P.colored_text("Signed on behalf of the company", 72, 560, (0, 0, 0))
         + P.draw_image(70, 554, 220, 16)

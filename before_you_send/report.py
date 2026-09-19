@@ -118,7 +118,7 @@ def to_text(report: Report, show_content: bool = False, verbose: bool = False) -
     counts = report.counts()
     total = sum(counts.values())
 
-    lines.append(f"Before You Send — {report.path}")
+    lines.append(f"Before You Send: {report.path}")
     lines.append(_rule("="))
     lines.append(
         f"Read {report.pages_read} page(s). {total} finding(s): "

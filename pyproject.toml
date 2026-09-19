@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "before-you-send"
-version = "0.2.1"
+version = "0.3.0"
 description = "Reads a PDF and reports what is still inside it that you may not mean to send. Runs entirely on your machine."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -20,7 +20,13 @@ classifiers = [
   "Programming Language :: Python :: 3",
   "Topic :: Utilities",
 ]
-dependencies = ["pypdf>=5.1"]
+# The crypto extra, not bare pypdf. A PDF encrypted with AES needs
+# cryptography to open, and publishers encrypt with an empty user password as
+# a matter of routine. Without it the tool told the sender their perfectly
+# good document was truncated or damaged: 15 of 250 gov.uk documents in one
+# measured corpus. Verified to resolve cryptography at both ends of this
+# range, pypdf 5.1.0 and 6.19.0.
+dependencies = ["pypdf[crypto]>=5.1"]
 
 [project.optional-dependencies]
 dev = ["pytest>=7", "ruff>=0.5"]
@@ -38,6 +44,11 @@ packages = ["before_you_send"]
 [tool.ruff]
 line-length = 100
 target-version = "py39"
+# scripts/ holds the measurement programs exactly as they were run, byte for byte.
+# Reformatting them would mean the committed file is no longer the file that
+# produced the published numbers, which is the only reason they are worth
+# committing. They are a record, not library code, and nothing imports them.
+extend-exclude = ["scripts"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "C4"]
