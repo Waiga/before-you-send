@@ -2,6 +2,11 @@
 
 Reads a PDF and tells you what is still inside it that you may not mean to send.
 
+What it found across 838 published documents from four institutional
+publishers, and why its loudest warning is true seventeen times more often than
+it is useful, is written up in
+[676 published documents kept their own history. Six kept different words](https://medium.com/@aryawaiga0/676-published-documents-kept-their-own-history-six-kept-different-words-3574da378b63).
+
 ```
 $ before-you-send letter.pdf
 
