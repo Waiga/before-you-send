@@ -91,6 +91,11 @@ def to_json(report: Report, show_content: bool = False) -> str:
         "could_not_see": [b.as_dict() for b in report.blindspots],
         "not_checked": [u.as_dict() for u in report.unchecked]
         + [{"topic": t, "reason": r} for t, r in NOT_CHECKED_ALWAYS],
+        # Empty on every ordinary run. Non-empty means a check could not run for
+        # want of a package, so this report has a hole in it that is the tool's
+        # fault and not the file's. A script should be able to learn that without
+        # matching on prose, which is why it is a field rather than only a sentence.
+        "missing_packages": list(report.missing_packages),
         "content_included": show_content,
     }
     return json.dumps(payload, indent=2)

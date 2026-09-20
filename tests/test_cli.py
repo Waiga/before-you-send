@@ -211,3 +211,109 @@ def test_help_does_not_promise_safety(flag, capsys):
         main([flag])
     out = capsys.readouterr().out
     assert "does not tell you a document is safe to send" in out
+
+
+# --- our fault, said as ours, when only part of the run is affected ---------
+
+
+def _check_missing_its_library(monkeypatch, message="Pillow is required to do image extraction"):
+    """Make one document check fail the way a missing package fails."""
+    from pypdf.errors import DependencyError
+
+    import before_you_send.run as run
+
+    def needs_a_package_we_do_not_have(*args, **kwargs):
+        raise DependencyError(message)
+
+    monkeypatch.setattr(run, "DOCUMENT_CHECKS", (needs_a_package_we_do_not_have,))
+
+
+def test_a_check_that_could_not_load_does_not_exit_clean(
+    clean_document, monkeypatch, capsys
+):
+    """A run missing a check is a run with a hole in it, whatever it printed.
+
+    Exit 0 is the only code a pipeline reads as "send it". A check that never ran
+    cannot have found anything, and the code has to say so or the honest NOT
+    CHECKED entry is visible to a person and invisible to the script that gates
+    the send.
+    """
+    _check_missing_its_library(monkeypatch)
+    assert main([clean_document]) == EXIT_TOOL_INCOMPLETE
+
+
+def test_a_check_that_could_not_load_outranks_the_findings_code(
+    fake_redaction, monkeypatch, capsys
+):
+    """Exit 1 and exit 3 are both "do not send". Only one of them is news.
+
+    A pipeline that gets 1 has a report it can act on. A pipeline that gets 3 has
+    a report with a hole in it and an install to fix, and that is the fact that
+    would otherwise be lost, because the findings are printed either way.
+    """
+    _check_missing_its_library(monkeypatch)
+    assert main([fake_redaction]) == EXIT_TOOL_INCOMPLETE
+
+
+def test_a_check_that_could_not_load_survives_fail_on_never(
+    fake_redaction, monkeypatch, capsys
+):
+    """--fail-on chooses which findings matter. A missing package is not a finding."""
+    _check_missing_its_library(monkeypatch)
+    assert main([fake_redaction, "--fail-on", "never"]) == EXIT_TOOL_INCOMPLETE
+
+
+def test_a_check_that_could_not_load_still_prints_everything_that_did_run(
+    fake_redaction, monkeypatch, capsys
+):
+    """The opposite failure: throwing away a good report because one check is short.
+
+    The document was opened and read. Every other check ran. Refusing to print
+    that would be the tool deciding a partial truth is worth less than nothing.
+    """
+    _check_missing_its_library(monkeypatch)
+    main([fake_redaction])
+    out = capsys.readouterr().out
+    # The reason is word wrapped to the report width, so the sentence is read back
+    # the way a person reads it rather than the way the lines happen to fall.
+    flowed = " ".join(out.split())
+
+    assert "covered_text" in out
+    assert "NOT CHECKED" in out
+    assert "Pillow is required to do image extraction" in flowed
+    assert "Your file is not the problem" in flowed
+    assert "DependencyError" not in out
+
+
+def test_a_check_that_could_not_load_says_so_on_stderr_too(
+    clean_document, monkeypatch, capsys
+):
+    """Somebody reading only the error stream must not see silence."""
+    _check_missing_its_library(monkeypatch)
+    main([clean_document])
+    err = capsys.readouterr().err
+
+    assert "This tool is missing something it needs" in err
+    assert "not a clean result" in err
+    assert "truncated" not in err
+    assert "damaged" not in err
+    assert "DependencyError" not in err
+
+
+def test_json_says_a_package_was_missing_in_a_field_a_script_can_read(
+    clean_document, monkeypatch, capsys
+):
+    """A script reading JSON should not have to match on prose to learn this."""
+    _check_missing_its_library(monkeypatch)
+    main([clean_document, "--format", "json"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["missing_packages"] == ["Pillow is required to do image extraction"]
+    assert any("not installed" in item["reason"] for item in payload["not_checked"])
+
+
+def test_json_on_an_ordinary_run_reports_no_missing_packages(fake_redaction, capsys):
+    main([fake_redaction, "--format", "json"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["missing_packages"] == []

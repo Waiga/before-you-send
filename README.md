@@ -90,9 +90,21 @@ before-you-send letter.pdf --format json    # for scripts
 ```
 
 Exit codes, for a pipeline: `0` nothing at or above the threshold, `1` something
-found, `2` the file could not be read, `3` this tool is missing a package it needs,
-so it read nothing and the file itself was never called into question. The threshold is `--fail-on high|medium|low|never`
-and defaults to `medium`.
+found, `2` the file could not be read, `3` this tool is missing something it needs,
+so part or all of the run never happened and the file itself was never called into
+question. The threshold is `--fail-on high|medium|low|never` and defaults to
+`medium`.
+
+`3` covers two events. Either nothing could be examined, because the document
+would not open without the missing package, or some of it could not, because one
+check or one page needed it and the rest of the run was fine. In the second case
+the report is still printed in full, and only the code says there is a hole in it.
+
+`3` is returned ahead of `1`, and it ignores `--fail-on`, because the findings are
+printed either way while "a check never ran" has nowhere else to go, and because
+`--fail-on` selects which findings matter rather than whether the tool is whole.
+Anything treating non-zero as do not send is unaffected. In JSON the same fact is
+the `missing_packages` list, which is empty on every ordinary run.
 
 Try it on the examples, which the repository generates rather than stores:
 

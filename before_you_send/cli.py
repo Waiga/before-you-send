@@ -21,6 +21,11 @@ EXIT_UNREADABLE = 2
 # examine a file that was never examined is the defect this code exists to end.
 # Nothing that was correct before regresses: anything treating non-zero as "do not
 # send" still holds, and a check for exactly 2 now correctly declines to match.
+# It covers two events, not one. Either nothing could be examined, because the
+# document would not open without the package, or some of it could not, because a
+# single check or a single page walk needed the package and the rest of the run was
+# fine. Both are the same sentence to the person running it: this tool is
+# incomplete, so do not read what it printed as the whole picture.
 EXIT_TOOL_INCOMPLETE = 3
 
 THRESHOLDS = {"high": Level.HIGH, "medium": Level.MEDIUM, "low": Level.LOW}
@@ -117,6 +122,33 @@ def main(argv: list | None = None) -> int:
         print(to_json(report, show_content=args.show_content))
     else:
         print(to_text(report, show_content=args.show_content, verbose=args.verbose))
+
+    if report.missing_packages:
+        # The report is printed first and in full. The document was opened, the
+        # pages were read, and every check that could run did: throwing that away
+        # because one check was short a package would be the tool deciding a
+        # partial truth is worth less than nothing, which is the opposite of the
+        # position it takes everywhere else.
+        #
+        # The code still has to be 3. Exit 0 is the only code a pipeline reads as
+        # "send it", and a check that never ran cannot have found anything, so a
+        # clean-looking 0 here would be the whole defect again one level up: an
+        # honest NOT CHECKED entry that a person can read and a script cannot.
+        #
+        # It is returned ahead of the findings code on purpose. Both are non-zero
+        # and both mean do not send, so nothing that gated on non-zero changes.
+        # The difference is that the findings are printed either way, while "this
+        # report has a hole in it, and an install will fix it" has nowhere else to
+        # go. --fail-on is not consulted, because it selects which finding levels
+        # matter and a missing package is not a finding.
+        print(
+            "\nThis tool is missing something it needs. "
+            f"{len(report.missing_packages)} thing(s) could not be examined because "
+            "a package is not installed, and each one is named in the report above. "
+            "What they would have found is unknown, so this is not a clean result.",
+            file=sys.stderr,
+        )
+        return EXIT_TOOL_INCOMPLETE
 
     return EXIT_FINDINGS if _should_fail(report, args.fail_on) else EXIT_CLEAN
 

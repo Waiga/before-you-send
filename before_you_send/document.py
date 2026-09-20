@@ -81,15 +81,59 @@ def _describe_open_failure(path: Path, error: Exception) -> str:
     )
 
 
-def _describe_missing_dependency(error: Exception) -> str:
-    """Say that the tool is short of a package, and never that the file is bad.
+_MISSING_PACKAGE_ERRORS: tuple | None = None
+
+
+def missing_package_errors() -> tuple:
+    """The exception types that mean this installation is short something.
+
+    Two of them, and the second is the one that matters.
+
+    pypdf's own DependencyError is the obvious one, and it is what the crypto
+    provider raises without the cryptography package. It is not what a missing
+    Pillow raises. Measured against both ends of this project's declared pypdf
+    range, 5.1.0 and 6.19.0, asking a page for its images without Pillow installed
+    raises a plain ImportError reading "pillow is required to do image extraction".
+    So the library everybody names first as the next thing to go missing arrives
+    wearing the wrong class, and a handler written for DependencyError alone would
+    have let precisely that case through to be reported as a failed check.
+
+    A failed import is a statement about this installation and never about the
+    document, whatever raised it, so both belong here. ImportError covers
+    ModuleNotFoundError, which subclasses it.
+    """
+    global _MISSING_PACKAGE_ERRORS
+    if _MISSING_PACKAGE_ERRORS is None:
+        from pypdf.errors import DependencyError
+
+        _MISSING_PACKAGE_ERRORS = (DependencyError, ImportError)
+    return _MISSING_PACKAGE_ERRORS
+
+
+def package_requirement(error: Exception) -> str:
+    """What the parser says it needs, in the parser's own words.
 
     pypdf states its own requirement precisely ("cryptography>=3.1 is required for
-    AES algorithm"), so that sentence is passed through rather than paraphrased.
-    Guessing at which package is missing would be the same class of error as
-    guessing that the file is damaged.
+    AES algorithm", "Pillow is required to do image extraction"), so that sentence
+    is passed through rather than paraphrased. Guessing at which package is missing
+    would be the same class of error as guessing that the file is damaged, and the
+    guess would go stale the first time pypdf changed a dependency.
+
+    Public because the run path needs the same sentence for a package that goes
+    missing inside a single check rather than at the point the file is opened. One
+    wording, one place, or the two halves of the same message drift apart.
     """
-    requirement = str(error).strip() or "a package that was not named"
+    # One trailing full stop is removed because the caller puts the requirement
+    # into the middle of a sentence and adds its own. pypdf is not consistent
+    # about this: "cryptography>=3.1 is required for AES algorithm" carries none
+    # and "jbig2dec binary is not available." carries one.
+    requirement = str(error).strip().rstrip(".").strip()
+    return requirement or "something this tool needs, which it did not name"
+
+
+def _describe_missing_dependency(error: Exception) -> str:
+    """Say that the tool is short of a package, and never that the file is bad."""
+    requirement = package_requirement(error)
     return (
         "Your file is not the problem. This tool needs a package that is not "
         f"installed, and could not open the document without it: {requirement}.\n\n"

@@ -9,6 +9,13 @@ An *unchecked* item is a whole class of thing this tool does not examine at all.
 
 A tool that collapses the second and third into "no problems found" is lying, and
 this file exists so that cannot happen by accident.
+
+Cutting across all three is a fourth question: whose fault the gap is. Almost
+always it is nobody's, because the tool was built not to look there. Sometimes it
+is ours, because a package we depend on is not installed and a check could not
+run. That case gets its own wording and its own field, because the default way of
+describing a gap reads as a statement about the document, and here that reading is
+false.
 """
 
 from __future__ import annotations
@@ -187,6 +194,40 @@ def collapse(findings: list[Finding], pages_read: int = 0) -> list[Finding]:
     return out
 
 
+def missing_package_reason(requirement: str, consequence: str) -> str:
+    """One sentence for a gap that is the tool's fault, in the tool's own voice.
+
+    Three things have to be in it and one thing has to be out of it.
+
+    In: that the document is not what is wrong, because that is the accusation
+    this whole class of message exists to stop making; what is missing, in the
+    words of whatever asked for it; and how to get it.
+
+    Out: the name of the exception class. "DependencyError" is not information a
+    person can act on. It is the tool talking to itself in front of a reader who
+    came here to find out whether a file is safe to send.
+
+    Also out: any promise that pip will fix it. Usually it will, and it is offered
+    as the usual answer. But not everything pypdf asks for is a Python package.
+    One of the two things it can ask for by name is the jbig2dec binary, and
+    telling somebody to pip install their way to a system binary sends them round
+    a loop that cannot close. What is named is named; what to type is a suggestion.
+    """
+    # The requirement arrives as pypdf's own sentence and the consequence is
+    # written at the call site, so the join between them is the one place the two
+    # can read as one badly punctuated run-on. Capitalised here rather than at
+    # every call site, because there are five of them and only one has to be
+    # forgotten for the report to look sloppy at exactly the moment it is asking
+    # to be trusted.
+    consequence = consequence[:1].upper() + consequence[1:]
+    return (
+        "Your file is not the problem. Something this tool needs is not installed, "
+        f"and it could not run without it: {requirement}. {consequence}. Install "
+        "what it needs and run this again. For a Python package that usually means "
+        "pip install --upgrade before-you-send."
+    )
+
+
 @dataclass
 class Report:
     """Everything one run learned about one file."""
@@ -198,6 +239,7 @@ class Report:
     pages_read: int = 0
     short_runs: int = 0
     picture_pages: int = 0
+    missing_packages: list = field(default_factory=list)
 
     def add(self, finding: Finding) -> None:
         self.findings.append(finding)
@@ -207,6 +249,36 @@ class Report:
 
     def note_unchecked(self, topic: str, reason: str) -> None:
         self.unchecked.append(Unchecked(topic, reason))
+
+    def note_missing_package(self, topic: str, requirement: str, consequence: str) -> None:
+        """Record something this installation could not look at for want of a package.
+
+        This is the fourth kind of gap and it is not like the other three. A
+        finding, a blind spot and an unchecked topic are all statements about the
+        document. This one is a statement about the tool, and the difference
+        matters more here than anywhere else in the report: told badly, it sends
+        somebody to hunt for a fault in a file that does not have one.
+
+        It is filed as an unchecked topic because that is where a reader looks for
+        what was not examined, and recorded separately as well, because a script
+        reading the exit code or the JSON has to be able to learn it without
+        matching on prose.
+        """
+        self.missing_packages.append(requirement)
+        self.note_unchecked(topic, missing_package_reason(requirement, consequence))
+
+    def note_missing_package_blindspot(
+        self, page: str, location: str, requirement: str, consequence: str
+    ) -> None:
+        """The same fact, where the gap is a place on a page rather than a topic.
+
+        A page whose drawing instructions could not be read is a place the tool
+        could not see into, which is what a blind spot is, and it is counted in the
+        header line that says so. Only the reason changes: it names the package
+        instead of naming the exception that carried the news.
+        """
+        self.missing_packages.append(requirement)
+        self.note_blindspot(page, location, missing_package_reason(requirement, consequence))
 
     def note_short_run(self) -> None:
         """Record that a run was passed over for being one or two characters long."""
