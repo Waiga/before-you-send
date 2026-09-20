@@ -5,12 +5,22 @@ from __future__ import annotations
 from before_you_send.checks import DOCUMENT_CHECKS, PAGE_CHECKS
 from before_you_send.checks.visibility import PAGE_IMAGE_SHARE, picture_share
 from before_you_send.content import Box, read_page
-from before_you_send.document import load
+from before_you_send.document import load, missing_package_errors, package_requirement
 from before_you_send.findings import Report
 
 
 def _page_box(page) -> Box | None:
-    """The visible area of a page: the crop box if there is one, else the media box."""
+    """The visible area of a page: the crop box if there is one, else the media box.
+
+    A box this cannot work out is not worth failing a run over, so a malformed one
+    costs the page its area and nothing else. A missing package is let past,
+    because falling back to no area here is not a harmless degradation: with no
+    area the picture share of the page computes as zero, and zero is exactly the
+    number that suppresses the warning about a page that is mostly picture. A
+    silent swallow there would turn a missing library into a quieter report.
+    """
+    short_of_something = missing_package_errors()
+
     for attribute in ("cropbox", "mediabox"):
         try:
             box = getattr(page, attribute, None)
@@ -19,6 +29,8 @@ def _page_box(page) -> Box | None:
             x0, y0, x1, y1 = (float(v) for v in (box.left, box.bottom, box.right, box.top))
             if x1 > x0 and y1 > y0:
                 return Box(x0, y0, x1, y1)
+        except short_of_something:
+            raise
         except Exception:
             continue
     return None
@@ -30,7 +42,17 @@ def inspect_document(path: str) -> Report:
     A check that fails takes itself out of the report and nothing else, and says so.
     A check that crashed and a check that found nothing are not the same result, and
     a report that cannot tell them apart is worthless.
+
+    There is a third thing in that set, and it is the one this file kept getting
+    wrong. A check that could not run because this installation is short a package
+    has not crashed and has not found nothing. It never happened. Told apart from
+    the other two it is a one line install; folded in with them it is a Python
+    exception class printed next to somebody's page, and the reader is left to
+    infer that their document did something unusual. Every place below that can
+    receive that news handles it before the broad handler, on purpose.
     """
+    short_of_something = missing_package_errors()
+
     doc = load(path)
     report = Report(path=doc.path, pages_read=doc.page_count)
     widths_estimated = False
@@ -42,6 +64,15 @@ def inspect_document(path: str) -> Report:
         widths_estimated = widths_estimated or content.estimated_widths
         text_unrecoverable = text_unrecoverable or content.unrecoverable_text
 
+        if content.missing_package:
+            report.note_missing_package_blindspot(
+                label,
+                "whole page",
+                content.missing_package,
+                "nothing painted on this page was examined at all, because its "
+                "drawing instructions are what could not be read",
+            )
+            continue
         if content.unreadable_reason:
             report.note_blindspot(label, "whole page", content.unreadable_reason)
             continue
@@ -53,12 +84,32 @@ def inspect_document(path: str) -> Report:
                 "so the rest of it was not examined",
             )
 
-        box = _page_box(page)
+        try:
+            box = _page_box(page)
+        except short_of_something as error:
+            report.note_missing_package(
+                f"How much of {label} is picture",
+                package_requirement(error),
+                "the area of the page could not be read without it, so how much of "
+                "this page is picture is not known and is not guessed at",
+            )
+            box = None
         if picture_share(content, box) >= PAGE_IMAGE_SHARE:
             report.picture_pages += 1
         for check in PAGE_CHECKS:
             try:
                 check(report, label, content, box)
+            except short_of_something as error:
+                # The defect this release exists to close. Falling through to the
+                # broad handler below wrote "the check did not complete
+                # (DependencyError)" into the report, which names a Python class
+                # at a reader who wanted to know whether a file was safe to send,
+                # and quietly attributes our missing dependency to their page.
+                report.note_missing_package(
+                    f"{check.__name__} on {label}",
+                    package_requirement(error),
+                    "this page was not examined for it",
+                )
             except Exception as error:
                 report.note_unchecked(
                     f"{check.__name__} on {label}",
@@ -69,6 +120,12 @@ def inspect_document(path: str) -> Report:
     for check in DOCUMENT_CHECKS:
         try:
             check(report, doc)
+        except short_of_something as error:
+            report.note_missing_package(
+                check.__name__,
+                package_requirement(error),
+                "the document was not examined for it",
+            )
         except Exception as error:
             report.note_unchecked(
                 check.__name__,

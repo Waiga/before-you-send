@@ -706,3 +706,269 @@ def test_the_new_refusal_is_a_kind_of_the_old_one(clean_document, monkeypatch):
 
     with pytest.raises(UnreadableDocument):
         load(clean_document)
+
+
+# --- the same library, one layer in -----------------------------------------
+#
+# 0.3.0 separated "this installation is short a package" from "this file is bad"
+# at the three places the document is opened: constructing the reader, opening an
+# encrypted file with the empty password, and walking to the page list. The 0.3.0
+# pull request said in as many words that it had not separated them anywhere else,
+# and named the survivor: a DependencyError raised inside a check was caught by the
+# broad handler in run.py and written into the report as "the check did not
+# complete (DependencyError)".
+#
+# That is the identical defect. A package this project never declared goes missing,
+# and what the reader is told is a Python exception class name attached to their
+# page. pypdf needs Pillow for anything that decodes image data, and this tool says
+# on every run that it does not look inside pictures, so Pillow is the trigger that
+# has not arrived yet rather than one that cannot.
+
+
+def _raising_check(message="Pillow is required to do image extraction"):
+    """A check that fails the way a missing package fails."""
+    from pypdf.errors import DependencyError
+
+    def needs_a_package_we_do_not_have(*args, **kwargs):
+        raise DependencyError(message)
+
+    return needs_a_package_we_do_not_have
+
+
+def _reasons(report):
+    return " ".join(item.reason for item in report.unchecked)
+
+
+def test_a_missing_package_inside_a_page_check_says_a_package_is_missing(
+    clean_document, monkeypatch
+):
+    """The defect, held at the page checks. The reader learns about a package."""
+    import before_you_send.run as run
+
+    monkeypatch.setattr(run, "PAGE_CHECKS", (_raising_check(),))
+    report = run.inspect_document(clean_document)
+    text = _reasons(report)
+
+    assert "Pillow is required to do image extraction" in text
+    assert "not installed" in text
+    assert "pip install" in text
+    # The thing that must never reach a person again.
+    assert "DependencyError" not in text
+    assert "did not complete" not in text
+
+
+def test_a_missing_package_inside_a_document_check_says_a_package_is_missing(
+    clean_document, monkeypatch
+):
+    import before_you_send.run as run
+
+    monkeypatch.setattr(run, "DOCUMENT_CHECKS", (_raising_check(),))
+    report = run.inspect_document(clean_document)
+    text = _reasons(report)
+
+    assert "Pillow is required to do image extraction" in text
+    assert "not installed" in text
+    assert "DependencyError" not in text
+
+
+def test_a_check_that_crashes_for_any_other_reason_is_still_reported_as_a_crash(
+    clean_document, monkeypatch
+):
+    """The separation has to cut both ways, or it has only moved the lie.
+
+    A check that genuinely fell over is not a missing package, and saying it was
+    would send somebody to install something that is already there.
+    """
+    import before_you_send.run as run
+
+    def falls_over(*args, **kwargs):
+        raise ValueError("a genuine fault in the check itself")
+
+    monkeypatch.setattr(run, "DOCUMENT_CHECKS", (falls_over,))
+    report = run.inspect_document(clean_document)
+    text = _reasons(report)
+
+    assert "did not complete" in text
+    assert "not installed" not in text
+    assert not report.missing_packages
+
+
+def test_a_missing_package_costs_one_check_and_not_the_others(
+    fake_redaction, monkeypatch
+):
+    """The report is still worth reading. Everything that could run, ran."""
+    import before_you_send.run as run
+    from before_you_send.checks import PAGE_CHECKS
+
+    monkeypatch.setattr(run, "PAGE_CHECKS", (*PAGE_CHECKS, _raising_check()))
+    report = run.inspect_document(fake_redaction)
+
+    assert "covered_text" in {f.check for f in report.findings}
+    assert report.missing_packages
+
+
+def test_a_missing_package_during_the_page_walk_does_not_blame_the_page(
+    clean_document, monkeypatch
+):
+    """The fourth site, found by auditing the run path rather than by report.
+
+    read_page catches everything and writes the exception class name into a blind
+    spot: "the page's drawing instructions could not be read (DependencyError)".
+    That is the same sentence shape as the one 0.3.0 removed, in a different
+    section of the same report, and it is the site Pillow would reach first.
+    """
+    import pypdf.generic
+    from pypdf.errors import DependencyError
+
+    from before_you_send.run import inspect_document
+
+    def refuse(*args, **kwargs):
+        raise DependencyError("Pillow is required to do image extraction")
+
+    monkeypatch.setattr(pypdf.generic, "ContentStream", refuse)
+    report = inspect_document(clean_document)
+
+    said = " ".join(
+        [s.reason for s in report.blindspots] + [u.reason for u in report.unchecked]
+    )
+    assert "Pillow is required to do image extraction" in said
+    assert "not installed" in said
+    assert "DependencyError" not in said
+    assert report.missing_packages
+
+
+def test_a_missing_package_reading_the_page_area_is_not_swallowed_in_silence(
+    clean_document, monkeypatch
+):
+    """The fifth site. This one said nothing at all, which is worse than saying it badly.
+
+    _page_box asks the page for its crop box and its media box behind a bare
+    except that continues. A missing package there produced no report entry of any
+    kind, a page area of None, and therefore a picture share of zero, which is the
+    number that suppresses the "mostly picture" warning.
+    """
+    from pypdf.errors import DependencyError
+
+    import before_you_send.run as run
+
+    def refuse(page):
+        raise DependencyError("Pillow is required to do image extraction")
+
+    monkeypatch.setattr(run, "_page_box", refuse)
+    report = run.inspect_document(clean_document)
+
+    assert report.missing_packages
+    assert "Pillow is required to do image extraction" in _reasons(report)
+    assert "DependencyError" not in _reasons(report)
+
+
+def test_the_run_never_reports_a_missing_package_when_nothing_is_missing(
+    fake_redaction,
+):
+    """The control. An ordinary run must not acquire a new way to look broken."""
+    from before_you_send.run import inspect_document
+
+    report = inspect_document(fake_redaction)
+
+    assert report.missing_packages == []
+
+
+# --- the trigger everybody names, wearing the wrong class -------------------
+#
+# The fix above was specified against pypdf's DependencyError, because that is
+# what carried the cryptography failure 0.3.0 was written for, and Pillow was
+# named as the library most likely to go missing next: pypdf needs it for anything
+# that decodes image data, and this tool says on every run that it does not look
+# inside pictures.
+#
+# Pillow does not raise DependencyError. Measured on 20 September 2026 against
+# both ends of this project's declared pypdf range, 5.1.0 and 6.19.0, asking a
+# page for its images with Pillow absent raises a plain ImportError. A handler
+# written for DependencyError alone would have caught the case nobody expected and
+# missed the one everybody predicted, and the reader would have been shown
+# "(ImportError)" instead of "(DependencyError)".
+#
+# So the handler catches a failed import too. Whatever class it arrives in, a
+# package that is not installed is a fact about this machine and not about the
+# document in front of it.
+
+PILLOW_MESSAGE = (
+    "pillow is required to do image extraction. "
+    "It can be installed via 'pip install pypdf[image]'"
+)
+
+
+def test_a_missing_pillow_is_reported_as_missing_and_not_as_a_failed_check(
+    clean_document, monkeypatch
+):
+    """The predicted trigger, in the class it actually arrives in."""
+    import before_you_send.run as run
+
+    def needs_pillow(*args, **kwargs):
+        raise ImportError(PILLOW_MESSAGE)
+
+    monkeypatch.setattr(run, "DOCUMENT_CHECKS", (needs_pillow,))
+    report = run.inspect_document(clean_document)
+    text = _reasons(report)
+
+    assert "pillow is required to do image extraction" in text
+    assert "not installed" in text
+    assert report.missing_packages
+    assert "ImportError" not in text
+    assert "did not complete" not in text
+
+
+def test_a_module_not_found_is_the_same_event(clean_document, monkeypatch):
+    """ModuleNotFoundError subclasses ImportError, and must not need its own branch."""
+    import before_you_send.run as run
+
+    def needs_something(*args, **kwargs):
+        raise ModuleNotFoundError("No module named 'pillow'")
+
+    monkeypatch.setattr(run, "DOCUMENT_CHECKS", (needs_something,))
+    report = run.inspect_document(clean_document)
+
+    assert report.missing_packages == ["No module named 'pillow'"]
+    assert "ModuleNotFoundError" not in _reasons(report)
+
+
+def test_a_binary_that_is_missing_is_not_described_as_a_pip_install(
+    clean_document, monkeypatch
+):
+    """pypdf asks for jbig2dec, which is a program and not a Python package.
+
+    Sending somebody to pip for a system binary sends them round a loop that
+    cannot close, so what to type is offered as the usual case and never as the
+    fix for whatever was named.
+    """
+    from pypdf.errors import DependencyError
+
+    import before_you_send.run as run
+
+    def needs_a_binary(*args, **kwargs):
+        raise DependencyError("jbig2dec binary is not available.")
+
+    monkeypatch.setattr(run, "DOCUMENT_CHECKS", (needs_a_binary,))
+    text = _reasons(run.inspect_document(clean_document))
+
+    assert "jbig2dec binary is not available" in text
+    assert "Install what it needs" in text
+    assert "For a Python package that usually means" in text
+    # The one full stop pypdf supplies must not become two.
+    assert "available.." not in text
+
+
+def test_a_requirement_that_names_nothing_still_reads_as_a_sentence(
+    clean_document, monkeypatch
+):
+    """An exception with no message must not produce a blank in the middle."""
+    import before_you_send.run as run
+
+    def says_nothing(*args, **kwargs):
+        raise ImportError("")
+
+    monkeypatch.setattr(run, "DOCUMENT_CHECKS", (says_nothing,))
+    text = _reasons(run.inspect_document(clean_document))
+
+    assert "something this tool needs, which it did not name" in text
+    assert "without it: ." not in text

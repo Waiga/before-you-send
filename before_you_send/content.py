@@ -194,6 +194,12 @@ class PageContent:
     truncated: bool = False
     unrecoverable_text: bool = False
     unreadable_reason: str | None = None
+    # Set instead of unreadable_reason when the walk stopped because this
+    # installation is short a package rather than because the page is malformed.
+    # The two look identical from here and read very differently to a sender: one
+    # is a fact about their document, the other is a fact about our dependency
+    # list, and only one of them is their problem.
+    missing_package: str | None = None
     estimated_widths: bool = False
 
 
@@ -966,6 +972,8 @@ def read_page(reader, page) -> PageContent:
     """Interpret one page's drawing instructions, degrading to a stated reason."""
     from pypdf.generic import ContentStream
 
+    from before_you_send.document import missing_package_errors, package_requirement
+
     content = PageContent()
     try:
         resources = page.get("/Resources")
@@ -977,6 +985,15 @@ def read_page(reader, page) -> PageContent:
             walker.run(stream.operations, resources, IDENTITY, 0, None)
         # Annotations paint after the page, so they keep walking the same counter.
         _walk_annotations(reader, page, walker)
+    except missing_package_errors() as error:
+        # Caught before the broad handler, and deliberately not merged into it.
+        # This is the site a missing package reaches first: a content stream is
+        # decoded here, and pypdf dispatches on the filter the file declares, so a
+        # stream declaring /JBIG2Decode asks for a jbig2dec binary that is very
+        # probably not on the machine. Reported through the sentence below it
+        # becomes a claim that the page could not be read, which is an accusation
+        # against a page that is almost certainly fine.
+        content.missing_package = package_requirement(error)
     except Exception as error:
         content.unreadable_reason = (
             f"the page's drawing instructions could not be read ({type(error).__name__})"
