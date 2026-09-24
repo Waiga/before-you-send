@@ -198,7 +198,7 @@ figure.
 
 ## 4. A note on figures already corrected
 
-Commit `e9f257f` corrected two numbers in this section that the corpus run did
+Commit `f6a50cb` corrected two numbers in this section that the corpus run did
 not support: the 8,638's two qualifiers had been stated against the wrong
 denominator and the wrong pass, and a "470 worst document" figure appeared that
 no pass ever produced. The composite-font result was given its population at the
