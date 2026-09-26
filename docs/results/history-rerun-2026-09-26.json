@@ -1,0 +1,78 @@
+{
+  "run": "2026-09-26 history re-measurement",
+  "what_this_is": "A re-run of the published history corpus, from the URLs in docs/corpus/history-corpus-2026-09-19.tsv, measured with scripts/measure_history.py. It exists because the README quoted figures that no published file backed, and because the manifest claimed surviving result files that could not be found on 26 September 2026.",
+  "retrieval": {
+    "attempted": 850,
+    "retrieved": 845,
+    "byte_identical_to_published_sha256": 834,
+    "changed_since_19_september": 11,
+    "changed_by_source": {
+      "arxiv": 7,
+      "govuk": 2,
+      "who": 2
+    },
+    "no_longer_retrievable": 5,
+    "no_longer_retrievable_by_source": {
+      "arxiv": 1,
+      "who": 4
+    }
+  },
+  "measurement": {
+    "pdfs_present": 844,
+    "read_by_the_tool": 829,
+    "unread_and_why": {
+      "count": 15,
+      "source": "govuk",
+      "reason": "the tool reported a missing optional package and said so plainly rather than blaming the file. Those 15 are excluded from every figure below."
+    },
+    "by_source_read": {
+      "arxiv": 148,
+      "fedreg": 300,
+      "govuk": 235,
+      "who": 146
+    },
+    "q1_chains_to_an_earlier_xref_section": {
+      "n": 659,
+      "by_source": {
+        "arxiv": 12,
+        "fedreg": 300,
+        "govuk": 224,
+        "who": 123
+      }
+    },
+    "q2_flagged_high_by_the_check": {
+      "n": 102,
+      "by_source": {
+        "arxiv": 8,
+        "govuk": 53,
+        "who": 41
+      }
+    },
+    "q3_an_object_present_in_two_versions": {
+      "n": 337,
+      "by_source": {
+        "fedreg": 300,
+        "govuk": 30,
+        "who": 7
+      }
+    },
+    "q4_a_page_points_at_different_content": {
+      "n": 6,
+      "by_source": {
+        "govuk": 3,
+        "who": 3
+      },
+      "distinct_pages_replaced": 7,
+      "page_comparisons_examined": 443,
+      "comparisons_where_content_differs": 9
+    },
+    "tool_and_independent_byte_walk_agree": "829 of 829"
+  },
+  "what_this_does_not_say": [
+    "No content recovered from any document appears here or was printed by the script.",
+    "The six documents behind Q4 are NOT named in this file. They are live published documents and the organisations that published them are being told first.",
+    "Q1 and Q3 are structural and ordinary. Only Q4 means what a reader assumes the first number means.",
+    "15 of 844 documents were not measured at all and every figure here is over 829, not 844."
+  ],
+  "reproduce_it": "Fetch the URLs in docs/corpus/history-corpus-2026-09-19.tsv, then run scripts/measure_history.py over the directory. 834 of the 845 retrievable documents were byte identical to their published hash on this date, so the corpus itself verifies."
+}

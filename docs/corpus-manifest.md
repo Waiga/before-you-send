@@ -205,6 +205,28 @@ no pass ever produced. The composite-font result was given its population at the
 same time. This manifest documents the corrected state; the commit message
 records what was wrong and how it was found.
 
+## 4a. The re-run of 26 September 2026
+
+The corpus was fetched again from the URLs published in
+`docs/corpus/history-corpus-2026-09-19.tsv` and measured again with
+`scripts/measure_history.py`. The full result is
+[`docs/results/history-rerun-2026-09-26.json`](results/history-rerun-2026-09-26.json).
+
+**The corpus verifies.** Of 845 documents still retrievable, **834 were byte identical to the
+SHA-256 published here**. Eleven had changed since 19 September, seven of them on arXiv. Five were no
+longer retrievable at all, four of those at the WHO, returning 404 or 401.
+
+**The finding reproduces, and the denominator is honest.** 829 of the 844 documents on disk were
+read. Fifteen gov.uk files were not, because the tool reported a missing optional package and said so
+plainly instead of blaming the file. **Every figure in the re-run is over 829, not 844.** Of those,
+659 chain to an earlier cross-reference section, 102 are flagged HIGH by the check, 337 hold an
+object in two versions, and **6 have a page pointing at content that replaced what was there
+before**, seven distinct pages in total. The tool and an independent byte walk agreed on all 829.
+
+**The six are not named here.** They are live published documents at gov.uk and the WHO, and those
+organisations are being told before anyone else is. No content recovered from any document appears
+in the result file, and the measuring script never prints any.
+
 ## 5. What a third party can and cannot reproduce
 
 | claim | status |
@@ -213,6 +235,5 @@ records what was wrong and how it was found.
 | membership of a candidate URL | **checkable**, the SHA-1 filename rule is published |
 | re-downloading the corpus | **partly**. 364 of 931 URLs survive; the 117 WHO documents have a re-derivation path; the 450 arXiv and Federal Register URLs do not |
 | which pass each figure belongs to | **reproducible**, see section 3 |
-| the pass 1, 2 and 4 figures | **unverified as at 26 September 2026.** This row previously read "backed by surviving result files, not published". Those files could not be located: a search of the authoring machine for result, findings and pass named files, and a content search for the finding text across JSON, TSV, CSV and text files under the work directory, returned nothing. They may exist on other media. What can be said today is that the figures rest on the run transcript, the same footing as pass 3. |
-| the pass 3 figures, including 8,638 and its percentages | **not reproducible**. The result file was overwritten; transcript only |
+| the pass 1, 2 and 4 figures | **superseded by a published re-run, 26 September 2026.** Those result files could not be found when searched for, so rather than leave the claim standing the corpus was fetched again from the published URLs and measured again. The result is in `docs/results/history-rerun-2026-09-26.json` and it is the first published corpus result file in this repository. The older pass figures still rest on their run transcript. |ncluding 8,638 and its percentages | **not reproducible**. The result file was overwritten; transcript only |
 | the measurement harness | **not published** |
