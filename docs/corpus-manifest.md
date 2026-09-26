@@ -213,6 +213,6 @@ records what was wrong and how it was found.
 | membership of a candidate URL | **checkable**, the SHA-1 filename rule is published |
 | re-downloading the corpus | **partly**. 364 of 931 URLs survive; the 117 WHO documents have a re-derivation path; the 450 arXiv and Federal Register URLs do not |
 | which pass each figure belongs to | **reproducible**, see section 3 |
-| the pass 1, 2 and 4 figures | backed by surviving result files, **not published** |
+| the pass 1, 2 and 4 figures | **unverified as at 26 September 2026.** This row previously read "backed by surviving result files, not published". Those files could not be located: a search of the authoring machine for result, findings and pass named files, and a content search for the finding text across JSON, TSV, CSV and text files under the work directory, returned nothing. They may exist on other media. What can be said today is that the figures rest on the run transcript, the same footing as pass 3. |
 | the pass 3 figures, including 8,638 and its percentages | **not reproducible**. The result file was overwritten; transcript only |
 | the measurement harness | **not published** |
